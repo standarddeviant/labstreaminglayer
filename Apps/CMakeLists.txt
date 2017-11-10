@@ -20,6 +20,7 @@ option(LSLAPPS_LabRecorder      "Build the recorder app"            OFF)
 option(LSLAPPS_XDFBrowser       "Build the XDFBrowser app"          OFF)
 option(LSLAPPS_Wiimote          "Build the Wiimote app"             OFF)
 option(LSLAPPS_OpenVR           "Build the OpenVR app"              OFF)
+option(LSLApps_BioSemi          "Build the BioSemi app"             OFF)
 
 # Windows-only apps
 if(WIN32)
@@ -61,4 +62,8 @@ endif()
 
 if(LSLAPPS_gNEEDaccess)
     add_subdirectory(g.Tec/g.NEEDaccess)
+endif()
+
+if(LSLApps_BioSemi)
+    add_subdirectory(BioSemi)
 endif()
