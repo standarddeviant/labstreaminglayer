@@ -284,7 +284,7 @@ function name(self::StreamInfo)
     #lib.lsl_get_name(self.obj).decode("utf-8")
     outp = ccall((:lsl_get_name, LSLBIN), Cstring, (Ptr{Void},), self.obj)
     # convert Cstring to Julia string if outp is not NULL
-    outp != C_NULL ? outp = unsafe_string(outp) : ""
+    outp != C_NULL ? unsafe_string(outp) : ""
 end
 
 function type(self::StreamInfo)
@@ -301,7 +301,7 @@ function type(self::StreamInfo)
     # return lib.lsl_get_type(self.obj).decode("utf-8")
     outp = ccall((:lsl_get_name, LSLBIN), Cstring, (Ptr{Void},), self.obj)
     # convert Cstring to Julia string if outp is not NULL
-    outp != C_NULL ? outp = unsafe_string(outp) : ""
+    outp != C_NULL ? unsafe_string(outp) : ""
 end
     
 function channel_count(self::StreamInfo)
@@ -341,100 +341,112 @@ function channel_format(self::StreamInfo)
 
     =#
     # return lib.lsl_get_channel_format(self.obj)
-    ccall((:lsl_get_nominal_srate, LSLBIN), Cint, (Ptr{Void},), self.obj)
+    ccall((:lsl_get_channel_format, LSLBIN), Cint, (Ptr{Void},), self.obj)
 end
 
-    def source_id(self):
-        #=Unique identifier of the stream"s source, if available.
+function source_id(self::StreamInfo)
+    #=Unique identifier of the stream"s source, if available.
 
-        The unique source (or device) identifier is an optional piece of 
-        information that, if available, allows that endpoints (such as the 
-        recording program) can re-acquire a stream automatically once it is 
-        back online.
+    The unique source (or device) identifier is an optional piece of 
+    information that, if available, allows that endpoints (such as the 
+    recording program) can re-acquire a stream automatically once it is 
+    back online.
 
-        =#
-        return lib.lsl_get_source_id(self.obj).decode("utf-8")
+    =#
+    # return lib.lsl_get_source_id(self.obj).decode("utf-8")
+    outp = ccall((:lsl_get_source_id, LSLBIN), Cstring, (Ptr{Void},), self.obj)
+    # convert Cstring to Julia string if outp is not NULL
+    outp != C_NULL ? unsafe_string(outp) : ""
+end
     
-    # === Hosting Information (assigned when bound to an outlet/inlet) ===
+# === Hosting Information (assigned when bound to an outlet/inlet) ===
     
-    def version(self):
-        #=Protocol version used to deliver the stream.=#
-        return lib.lsl_get_version(self.obj)
+function version(self::StreamInfo)
+    #=Protocol version used to deliver the stream.=#
+    return lib.lsl_get_version(self.obj)
+
+function created_at(self::StreamInfo)
+    #=Creation time stamp of the stream.
+
+    This is the time stamp when the stream was first created
+    (as determined via local_clock() on the providing machine).
+
+    =#
+    return lib.lsl_get_created_at(self.obj)
+
+function uid(self::StreamInfo)
+    #=Unique ID of the stream outlet instance (once assigned).
+
+    This is a unique identifier of the stream outlet, and is guaranteed to 
+    be different across multiple instantiations of the same outlet (e.g., 
+    after a re-start).
+
+    =#
+    return lib.lsl_get_uid(self.obj).decode("utf-8")
+end
+
+function session_id(self::StreamInfo)
+    #=Session ID for the given stream.
+
+    The session id is an optional human-assigned identifier of the 
+    recording session. While it is rarely used, it can be used to prevent 
+    concurrent recording activitites on the same sub-network (e.g., in 
+    multiple experiment areas) from seeing each other"s streams 
+    (can be assigned in a configuration file read by liblsl, see also 
+    Network Connectivity in the LSL wiki).
+
+    =#
+    return lib.lsl_get_session_id(self.obj).decode("utf-8")
+end
     
-    def created_at(self):
-        #=Creation time stamp of the stream.
-
-        This is the time stamp when the stream was first created
-        (as determined via local_clock() on the providing machine).
-
-        =#
-        return lib.lsl_get_created_at(self.obj)
+function hostname(self::StreamInfo)
+    #=Hostname of the providing machine.=#
+    return lib.lsl_get_hostname(self.obj).decode("utf-8")
+end
     
-    def uid(self):
-        #=Unique ID of the stream outlet instance (once assigned).
+# === Data Description (can be modified) ===
 
-        This is a unique identifier of the stream outlet, and is guaranteed to 
-        be different across multiple instantiations of the same outlet (e.g., 
-        after a re-start).
+# DRCFIX XMLElement class is defined below, but it looks like a pain
+# commenting out this function for now...
+# function desc(self::StreamInfo)
+#     #=Extended description of the stream.
 
-        =#
-        return lib.lsl_get_uid(self.obj).decode("utf-8")
-
-    function session_id(self)
-        #=Session ID for the given stream.
-
-        The session id is an optional human-assigned identifier of the 
-        recording session. While it is rarely used, it can be used to prevent 
-        concurrent recording activitites on the same sub-network (e.g., in 
-        multiple experiment areas) from seeing each other"s streams 
-        (can be assigned in a configuration file read by liblsl, see also 
-        Network Connectivity in the LSL wiki).
-
-        =#
-        return lib.lsl_get_session_id(self.obj).decode("utf-8")
-    end
+#     It is highly recommended that at least the channel labels are described 
+#     here. See code examples on the LSL wiki. Other information, such 
+#     as amplifier settings, measurement units if deviating from defaults, 
+#     setup information, subject information, etc., can be specified here, as 
+#     well. Meta-data recommendations follow the XDF file format project
+#     (github.com/sccn/xdf/wiki/Meta-Data or web search for: XDF meta-data).
     
-    def hostname(self):
-        #=Hostname of the providing machine.=#
-        return lib.lsl_get_hostname(self.obj).decode("utf-8")
-    
-    # === Data Description (can be modified) ===
-    
-    def desc(self):
-        """Extended description of the stream.
+#     Important: if you use a stream content type for which meta-data 
+#     recommendations exist, please try to lay out your meta-data in 
+#     agreement with these recommendations for compatibility with other 
+#     applications.
 
-        It is highly recommended that at least the channel labels are described 
-        here. See code examples on the LSL wiki. Other information, such 
-        as amplifier settings, measurement units if deviating from defaults, 
-        setup information, subject information, etc., can be specified here, as 
-        well. Meta-data recommendations follow the XDF file format project
-        (github.com/sccn/xdf/wiki/Meta-Data or web search for: XDF meta-data).
-        
-        Important: if you use a stream content type for which meta-data 
-        recommendations exist, please try to lay out your meta-data in 
-        agreement with these recommendations for compatibility with other 
-        applications.
+#     =#
+#     # return XMLElement(lib.lsl_get_desc(self.obj))
+# end
+   
+function as_xml(self::StreamInfo)
+    #=Retrieve the entire stream_info in XML format.
 
-        """
-        return XMLElement(lib.lsl_get_desc(self.obj))
-                
-    def as_xml(self):
-        #=Retrieve the entire stream_info in XML format.
+    This yields an XML document (in string form) whose top-level element is 
+    <description>. The description element contains one element for each
+    field of the stream_info class, including:
+    a) the core elements <name>, <type>, <channel_count>, <nominal_srate>, 
+        <channel_format>, <source_id>
+    b) the misc elements <version>, <created_at>, <uid>, <session_id>, 
+        <v4address>, <v4data_port>, <v4service_port>, <v6address>, 
+        <v6data_port>, <v6service_port>
+    c) the extended description element <desc> with user-defined 
+        sub-elements.
 
-        This yields an XML document (in string form) whose top-level element is 
-        <description>. The description element contains one element for each
-        field of the stream_info class, including:
-        a) the core elements <name>, <type>, <channel_count>, <nominal_srate>, 
-           <channel_format>, <source_id>
-        b) the misc elements <version>, <created_at>, <uid>, <session_id>, 
-           <v4address>, <v4data_port>, <v4service_port>, <v6address>, 
-           <v6data_port>, <v6service_port>
-        c) the extended description element <desc> with user-defined 
-           sub-elements.
-
-        =#
-        return lib.lsl_get_xml(self.obj).decode("utf-8")
-end # for 
+    =#
+    # return lib.lsl_get_xml(self.obj).decode("utf-8")
+    outp = ccall((:lsl_get_xml, LSLBIN), Cstring, (Ptr{Void},), self.obj)
+    # convert Cstring to Julia string if outp is not NULL
+    outp != C_NULL ? unsafe_string(outp) : ""
+end
         
 
 # =====================    
