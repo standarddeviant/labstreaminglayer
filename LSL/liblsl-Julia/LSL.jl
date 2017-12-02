@@ -637,8 +637,8 @@ end
 # === Resolve Functions ===
 # =========================
 
-def resolve_streams(wait_time=1.0):
-    """Resolve all streams on the network.
+function resolve_streams(wait_time=1.0)
+    #=Resolve all streams on the network.
 
     This function returns all currently available streams from any outlet on 
     the network. The network is usually the subnet specified at the local 
@@ -657,15 +657,20 @@ def resolve_streams(wait_time=1.0):
     can subsequently be used to open an inlet. The full description can be
     retrieved from the inlet.
 
-    """
+    =#
     # noinspection PyCallingNonCallable
-    buffer = (c_void_p*1024)()
-    num_found = lib.lsl_resolve_all(byref(buffer), 1024, c_double(wait_time))
+    buffer = Vector{Ptr{Void}}(1024) #c_void_p*1024)()
+    # num_found = lib.lsl_resolve_all(byref(buffer), 1024, c_double(wait_time))
+    num_found = ccall((:lsl_resolve_all, LSLBIN), 
+        Cint, 
+        (Ptr{Ptr{Void}}, Cint, Cdouble),
+        buffer, Cint(1024), Cdouble(wait_time))
     return [StreamInfo(handle=buffer[k]) for k in range(num_found)]
+end
 
 
-def resolve_byprop(prop, value, minimum=1, timeout=FOREVER):
-    """Resolve all streams with a specific value for a given property.
+function resolve_byprop(prop, value, minimum=1, timeout=FOREVER)
+    #=Resolve all streams with a specific value for a given property.
 
     If the goal is to resolve a specific stream, this method is preferred over 
     resolving all streams and then selecting the desired one.
@@ -685,16 +690,20 @@ def resolve_byprop(prop, value, minimum=1, timeout=FOREVER):
     
     Example: results = resolve_Stream_byprop("type","EEG")
 
-    """
+    =#
     # noinspection PyCallingNonCallable
-    buffer = (c_void_p*1024)()
-    num_found = lib.lsl_resolve_byprop(byref(buffer), 1024,
-                                       c_char_p(str.encode(prop)),
-                                       c_char_p(str.encode(value)),
-                                       minimum,
-                                       c_double(timeout))
+    buffer = Vector{Ptr{Void}}(1024) #(c_void_p*1024)()
+    # num_found = lib.lsl_resolve_byprop(byref(buffer), 1024,
+    #                                    c_char_p(str.encode(prop)),
+    #                                    c_char_p(str.encode(value)),
+    #                                    minimum,
+    #                                    c_double(timeout))
+    num_found = ccall((:lsl_resolve_byprop, LSLBIN), 
+        Cint, 
+        (Ptr{Ptr{Void}}, Cint, Cstring, Cstring, Cint, Cdouble),
+        buffer, Cint(1024), prop, value, minimum, Cdouble(wait_time))
     return [StreamInfo(handle=buffer[k]) for k in range(num_found)]
-
+end
 
 def resolve_bypred(predicate, minimum=1, timeout=FOREVER):
     """Resolve all streams that match a given predicate.
