@@ -554,7 +554,7 @@ function push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
     end
 end
 
-def push_chunk(self::StreamOutlet, x, timestamp=0.0, pushthrough=True):
+function push_chunk(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
     #=Push a list of samples into the outlet.
 
     samples -- A list of samples, either as a list of lists or a list of  
@@ -572,35 +572,36 @@ def push_chunk(self::StreamOutlet, x, timestamp=0.0, pushthrough=True):
     =#
     try
         n_values = self.channel_count * length(x)
-        data_buff = (self.value_type * n_values).from_buffer(x) # DRCFIX
+        # data_buff = (self.value_type * n_values).from_buffer(x) # DRCFIX
+        data_buff = Vector{self.value_type}(vec(x))
         handle_error(ccall(
             (self.do_push_chunk, LSLBIN),
-            ???
-            (Ptr{Void}, WTF_IS_DATA_BUFF???, Clong, Cdouble, Cint)
-            (self.obj, data_buff, 
-             c_long(n_values), c_double(timestamp), c_int(pushthrough)))
+            Cint, # inferred via https://github.com/sccn/labstreaminglayer/blob/8d032fb43245be0d8598488d2cf783ac36a97831/LSL/liblsl/include/lsl_c.h#L498
+            (Ptr{Void}, Ptr{self.value_type}, Clong, Cdouble, Cint)
+            (self.obj, data_buff, Clong(n_values), Cdouble(timestamp), Cint(pushthrough)))
     catch TypeError TE
-        if length(x)
-            if isa(x[0], AbstractArray)
-                x = [v for sample in x for v in sample]
-            end
-            # DRCFIX is this necessary in Julia???
-            # if self.channel_format == cf_string:
-            #     x = [v.encode("utf-8") for v in x]
-            # end
-            if length(x) % self.channel_count == 0:
-                constructor = self.value_type*len(x)
-                # noinspection PyCallingNonCallable
-                handle_error(
-                    self.do_push_chunk(self.obj, constructor(*x),
-                                                c_long(len(x)),
-                                                c_double(timestamp),
-                                                c_int(pushthrough)))
-            else
-                raise ValueError("each sample must have the same number of "
-                                    "channels.")
-            end
-        end
+        println("I don't think should this happen at all... vec(x) shold obviate this block...")
+        # if length(x)
+        #     if isa(x[0], AbstractArray)
+        #         x = [v for sample in x for v in sample]
+        #     end
+        #     # DRCFIX is this necessary in Julia???
+        #     # if self.channel_format == cf_string:
+        #     #     x = [v.encode("utf-8") for v in x]
+        #     # end
+        #     if length(x) % self.channel_count == 0:
+        #         constructor = self.value_type*len(x)
+        #         # noinspection PyCallingNonCallable
+        #         handle_error(
+        #             self.do_push_chunk(self.obj, constructor(*x),
+        #                                         c_long(len(x)),
+        #                                         c_double(timestamp),
+        #                                         c_int(pushthrough)))
+        #     else
+        #         raise ValueError("each sample must have the same number of "
+        #                             "channels.")
+        #     end
+        # end
     end # try / catch
 end # push_chunk
                             
@@ -611,7 +612,10 @@ function have_consumers(self::StreamOutlet)
     if there is no consumer.
 
     =#
-    return bool(lib.lsl_have_consumers(self.obj))
+    # return bool(lib.lsl_have_consumers(self.obj))
+    ccall((:lsl_have_consumers, LSLBIN),
+        Cint, # inferred via https://github.com/sccn/labstreaminglayer/blob/master/LSL/liblsl/include/lsl_c.h#L586
+        (Ptr{Void}, ), self.obj)
 end
     
 function wait_for_consumers(self::StreamOutlet, timeout)
@@ -620,7 +624,12 @@ function wait_for_consumers(self::StreamOutlet, timeout)
     Returns True if the wait was successful, False if the timeout expired.
 
     =#
-    return bool(lib.lsl_wait_for_consumers(self.obj, c_double(timeout)))
+    # return bool(lib.lsl_wait_for_consumers(self.obj, c_double(timeout)))
+    ccall((:lsl_wait_for_consumers, LSLBIN), 
+        Cint, 
+        (Ptr{Void}, Cdouble),
+        self.obj, Cdouble(timeout)
+    )
 end
 
  
