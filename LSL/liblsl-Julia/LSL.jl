@@ -508,7 +508,7 @@ function StreamOutlet(info, chunk_size=0, max_buffered=360):
     )
 end
                 
-def __del__(self):
+def del(self::StreamOutlet):
     #=Destroy an outlet.
 
     The outlet will no longer be discoverable after destruction and all 
@@ -521,89 +521,97 @@ def __del__(self):
     except:
         pass
         
-    def push_sample(self, x, timestamp=0.0, pushthrough=True):
-        """Push a sample into the outlet.
+def push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True):
+    #=Push a sample into the outlet.
 
-        Each entry in the list corresponds to one channel.
+    Each entry in the list corresponds to one channel.
 
-        Keyword arguments:
-        x -- A list of values to push (one per channel).
-        timestamp -- Optionally the capture time of the sample, in agreement 
-                     with local_clock(); if omitted, the current 
-                     time is used. (default 0.0)
-        pushthrough -- Whether to push the sample through to the receivers  
-                       instead of buffering it with subsequent samples. 
-                       Note that the chunk_size, if specified at outlet 
-                       construction, takes precedence over the pushthrough flag.
-                       (default True)
+    Keyword arguments:
+    x -- A list of values to push (one per channel).
+    timestamp -- Optionally the capture time of the sample, in agreement 
+                    with local_clock(); if omitted, the current 
+                    time is used. (default 0.0)
+    pushthrough -- Whether to push the sample through to the receivers  
+                    instead of buffering it with subsequent samples. 
+                    Note that the chunk_size, if specified at outlet 
+                    construction, takes precedence over the pushthrough flag.
+                    (default True)
 
-        """
-        if len(x) == self.channel_count:
-            if self.channel_format == cf_string:
-                x = [v.encode("utf-8") for v in x]
-            handle_error(self.do_push_sample(self.obj, self.sample_type(*x),
-                                             c_double(timestamp),
-                                             c_int(pushthrough)))
-        else:
-            raise ValueError("length of the data must correspond to the "
-                             "stream"s channel count.")
-
-    def push_chunk(self, x, timestamp=0.0, pushthrough=True):
-        """Push a list of samples into the outlet.
-
-        samples -- A list of samples, either as a list of lists or a list of  
-                   multiplexed values.
-        timestamp -- Optionally the capture time of the most recent sample, in 
-                     agreement with local_clock(); if omitted, the current 
-                     time is used. The time stamps of other samples are 
-                     automatically derived according to the sampling rate of 
-                     the stream. (default 0.0)
-        pushthrough Whether to push the chunk through to the receivers instead 
-                    of buffering it with subsequent samples. Note that the 
-                    chunk_size, if specified at outlet construction, takes 
-                    precedence over the pushthrough flag. (default True)
-
-        """
-        try:
-            n_values = self.channel_count * len(x)
-            data_buff = (self.value_type * n_values).from_buffer(x)
-            handle_error(self.do_push_chunk(self.obj, data_buff,
-                                            c_long(n_values),
+    =#
+    if len(x) == self.channel_count:
+        if self.channel_format == cf_string:
+            x = [v.encode("utf-8") for v in x]
+        handle_error(self.do_push_sample(self.obj, self.sample_type(*x),
                                             c_double(timestamp),
                                             c_int(pushthrough)))
-        except TypeError:
-            if len(x):
-                if type(x[0]) is list:
-                    x = [v for sample in x for v in sample]
-                if self.channel_format == cf_string:
-                    x = [v.encode("utf-8") for v in x]
-                if len(x) % self.channel_count == 0:
-                    constructor = self.value_type*len(x)
-                    # noinspection PyCallingNonCallable
-                    handle_error(self.do_push_chunk(self.obj, constructor(*x),
-                                                    c_long(len(x)),
-                                                    c_double(timestamp),
-                                                    c_int(pushthrough)))
-                else:
-                    raise ValueError("each sample must have the same number of "
-                                     "channels.")
-                                
-    def have_consumers(self):
-        """Check whether consumers are currently registered.
+    else:
+        raise ValueError(
+            "length of the data must correspond to the stream's channel count.")
 
-        While it does not hurt, there is technically no reason to push samples 
-        if there is no consumer.
+def push_chunk(self::StreamOutlet, x, timestamp=0.0, pushthrough=True):
+    #=Push a list of samples into the outlet.
 
-        """
-        return bool(lib.lsl_have_consumers(self.obj))
-        
-    def wait_for_consumers(self, timeout):
-        """Wait until some consumer shows up (without wasting resources).
+    samples -- A list of samples, either as a list of lists or a list of  
+                multiplexed values.
+    timestamp -- Optionally the capture time of the most recent sample, in 
+                    agreement with local_clock(); if omitted, the current 
+                    time is used. The time stamps of other samples are 
+                    automatically derived according to the sampling rate of 
+                    the stream. (default 0.0)
+    pushthrough Whether to push the chunk through to the receivers instead 
+                of buffering it with subsequent samples. Note that the 
+                chunk_size, if specified at outlet construction, takes 
+                precedence over the pushthrough flag. (default True)
 
-        Returns True if the wait was successful, False if the timeout expired.
+    =#
+    try
+        n_values = self.channel_count * len(x)
+        data_buff = (self.value_type * n_values).from_buffer(x)
+        handle_error(self.do_push_chunk(self.obj, data_buff,
+                                        c_long(n_values),
+                                        c_double(timestamp),
+                                        c_int(pushthrough)))
+    catch TypeError TE
+        if length(x)
+            if type(x[0]) is list: # DRCFIX
+                x = [v for sample in x for v in sample]
+            end
+            if self.channel_format == cf_string:
+                x = [v.encode("utf-8") for v in x]
+            end
+            if len(x) % self.channel_count == 0:
+                constructor = self.value_type*len(x)
+                # noinspection PyCallingNonCallable
+                handle_error(self.do_push_chunk(self.obj, constructor(*x),
+                                                c_long(len(x)),
+                                                c_double(timestamp),
+                                                c_int(pushthrough)))
+            else
+                raise ValueError("each sample must have the same number of "
+                                    "channels.")
+            end
+        end
+    end # try / catch
+end # push_chunk
+                            
+function have_consumers(self::StreamOutlet)
+    #=Check whether consumers are currently registered.
 
-        """
-        return bool(lib.lsl_wait_for_consumers(self.obj, c_double(timeout)))
+    While it does not hurt, there is technically no reason to push samples 
+    if there is no consumer.
+
+    =#
+    return bool(lib.lsl_have_consumers(self.obj))
+end
+    
+function wait_for_consumers(self::StreamOutlet, timeout)
+    #=Wait until some consumer shows up (without wasting resources).
+
+    Returns True if the wait was successful, False if the timeout expired.
+
+    =#
+    return bool(lib.lsl_wait_for_consumers(self.obj, c_double(timeout)))
+end
 
  
 # =========================
