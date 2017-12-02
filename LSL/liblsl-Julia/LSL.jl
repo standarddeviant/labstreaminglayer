@@ -539,18 +539,15 @@ function push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
 
     =#
     if length(x) == self.channel_count:
-         # DRCFIX - is this needed for julia????
-        if self.channel_format == cf_string 
-            x = [v.encode("utf-8") for v in x]
-        end
+        # DRCFIX - is this needed for julia????
+        # if self.channel_format == cf_string 
+        #     x = [v.encode("utf-8") for v in x]
+        # end
         handle_error(ccall( 
             (self.do_push_sample, LSLBIN),
             Cint, # output type # DRCFIX double check this
-            (Ptr{Void}, Vector{self.sample}, Cdouble, Cint),
-            self.obj, 
-            Vector{self.sample_type}(x),
-            Cdouble(timestamp),
-            Cint(pushthrough)))
+            (Ptr{Void}, Vector{self.sample}, Cdouble, Cint), # input types
+            self.obj, Vector{self.sample_type}(x), Cdouble(timestamp), Cint(pushthrough) ))
     else
         throw(ErrorException(
             "length of the data must correspond to the stream's channel count."))
@@ -574,24 +571,28 @@ def push_chunk(self::StreamOutlet, x, timestamp=0.0, pushthrough=True):
 
     =#
     try
-        n_values = self.channel_count * len(x)
-        data_buff = (self.value_type * n_values).from_buffer(x)
-        handle_error(self.do_push_chunk(self.obj, data_buff,
-                                        c_long(n_values),
-                                        c_double(timestamp),
-                                        c_int(pushthrough)))
+        n_values = self.channel_count * length(x)
+        data_buff = (self.value_type * n_values).from_buffer(x) # DRCFIX
+        handle_error(ccall(
+            (self.do_push_chunk, LSLBIN),
+            ???
+            (Ptr{Void}, WTF_IS_DATA_BUFF???, Clong, Cdouble, Cint)
+            (self.obj, data_buff, 
+             c_long(n_values), c_double(timestamp), c_int(pushthrough)))
     catch TypeError TE
         if length(x)
-            if typeof(x[0]) is list: # DRCFIX
+            if isa(x[0], AbstractArray)
                 x = [v for sample in x for v in sample]
             end
-            if self.channel_format == cf_string:
-                x = [v.encode("utf-8") for v in x]
-            end
-            if len(x) % self.channel_count == 0:
+            # DRCFIX is this necessary in Julia???
+            # if self.channel_format == cf_string:
+            #     x = [v.encode("utf-8") for v in x]
+            # end
+            if length(x) % self.channel_count == 0:
                 constructor = self.value_type*len(x)
                 # noinspection PyCallingNonCallable
-                handle_error(self.do_push_chunk(self.obj, constructor(*x),
+                handle_error(
+                    self.do_push_chunk(self.obj, constructor(*x),
                                                 c_long(len(x)),
                                                 c_double(timestamp),
                                                 c_int(pushthrough)))
