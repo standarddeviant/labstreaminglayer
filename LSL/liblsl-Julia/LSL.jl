@@ -467,12 +467,12 @@ mutable struct StreamOutlet
     =# 
     obj::Ptr{Void}
     # DRCFIX what are the types of these vars?
-    channel_format # = info.channel_format()
-    channel_count  # = info.channel_count()
-    do_push_sample # = fmt2push_sample[self.channel_format]
-    do_push_chunk  # = fmt2push_chunk[self.channel_format]
-    value_type     # = fmt2type[self.channel_format]
-    sample_type    # = self.value_type*self.channel_count
+    channel_format # = info.channel_format()                  # Cint
+    channel_count  # = info.channel_count()                   # Cint
+    do_push_sample # = fmt2push_sample[self.channel_format]   # Julia func (currently)
+    do_push_chunk  # = fmt2push_chunk[self.channel_format]    # Julia func (currently)
+    value_type     # = fmt2type[self.channel_format]          # [ Cfloat | Cint | etc. ]
+    sample_type    # = self.value_type*self.channel_count     # 
 end
     
 function StreamOutlet(info, chunk_size=0, max_buffered=360):
@@ -521,7 +521,7 @@ function del(self::StreamOutlet)
     end
 end
         
-def push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True):
+function push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
     #=Push a sample into the outlet.
 
     Each entry in the list corresponds to one channel.
@@ -543,12 +543,19 @@ def push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True):
         if self.channel_format == cf_string 
             x = [v.encode("utf-8") for v in x]
         end
-        handle_error(self.do_push_sample(self.obj, self.sample_type(*x),
-                                            c_double(timestamp),
-                                            c_int(pushthrough)))
-    else:
-        raise ValueError(
-            "length of the data must correspond to the stream's channel count.")
+        handle_error(ccall( 
+            (self.do_push_sample, LSLBIN),
+            Cint, # output type # DRCFIX double check this
+            (Ptr{Void}, Vector{self.sample}, Cdouble, Cint),
+            self.obj, 
+            Vector{self.sample_type}(x),
+            Cdouble(timestamp),
+            Cint(pushthrough)))
+    else
+        throw(ErrorException(
+            "length of the data must correspond to the stream's channel count."))
+    end
+end
 
 def push_chunk(self::StreamOutlet, x, timestamp=0.0, pushthrough=True):
     #=Push a list of samples into the outlet.
@@ -1401,13 +1408,20 @@ string2fmt = {"float32": cf_float32, "double64": cf_double64,
               "int8": cf_int8, "int64": cf_int64}
 fmt2string = ["undefined", "float32", "double64", "string", "int32", "int16",
               "int8", "int64"]
-fmt2type = [[], c_float, c_double, c_char_p, c_int, c_short, c_byte, c_longlong]
-fmt2push_sample = [[], lib.lsl_push_sample_ftp, lib.lsl_push_sample_dtp,
-                   lib.lsl_push_sample_strtp, lib.lsl_push_sample_itp,
-                   lib.lsl_push_sample_stp, lib.lsl_push_sample_ctp, []]
-fmt2pull_sample = [[], lib.lsl_pull_sample_f, lib.lsl_pull_sample_d,
-                   lib.lsl_pull_sample_str, lib.lsl_pull_sample_i,
-                   lib.lsl_pull_sample_s, lib.lsl_pull_sample_c, []]
+fmt2type = [[], Cfloat, Cdouble, Cstring, Cint, Cshort, Cchar, Clonglong]
+# fmt2push_sample = [[], lib.lsl_push_sample_ftp, lib.lsl_push_sample_dtp,
+#                    lib.lsl_push_sample_strtp, lib.lsl_push_sample_itp,
+#                    lib.lsl_push_sample_stp, lib.lsl_push_sample_ctp, []]
+# fmt2pull_sample = [[], lib.lsl_pull_sample_f, lib.lsl_pull_sample_d,
+#                    lib.lsl_pull_sample_str, lib.lsl_pull_sample_i,
+#                    lib.lsl_pull_sample_s, lib.lsl_pull_sample_c, []]
+# DRCNOTE , switching from Python functions to Julia Symbols for use with ccall
+fmt2push_sample = [[], :lsl_push_sample_ftp, :lsl_push_sample_dtp,
+                   :lsl_push_sample_strtp, :lsl_push_sample_itp,
+                   :lsl_push_sample_stp, :lsl_push_sample_ctp, []]
+fmt2pull_sample = [[], :lsl_pull_sample_f, :lsl_pull_sample_d,
+                   :lsl_pull_sample_str, :lsl_pull_sample_i,
+                   :lsl_pull_sample_s, :lsl_pull_sample_c, []]
 # noinspection PyBroadException
 try:
     fmt2push_chunk = [[], lib.lsl_push_chunk_ftp, lib.lsl_push_chunk_dtp,
