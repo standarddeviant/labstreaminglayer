@@ -201,7 +201,7 @@ end
 
 function StreamInfo(name="untitled", type="", channel_count=1,
                 nominal_srate=IRREGULAR_RATE, channel_format=cf_float32,
-                source_id="", handle=None):
+                source_id="", handle=None)
     #=Construct a new StreamInfo object.
 
     Core stream information is specified here. Any remaining meta-data can 
@@ -259,75 +259,90 @@ function StreamInfo(name="untitled", type="", channel_count=1,
     end
 end # function StreamInfo
     
-    def __del__(self):
-        """ Destroy a previously created StreamInfo object. """
-        # noinspection PyBroadException
-        try:
-            lib.lsl_destroy_streaminfo(self.obj)
-        except:
-            pass
+function del(self::StreamInfo)
+    #= Destroy a previously created StreamInfo object. =#
+    # noinspection PyBroadException
+    try
+        # lib.lsl_destroy_streaminfo(x.obj)
+        ccall((:lsl_destroy_streaminfo, LSLBIN), Void, (Ptr{Void},), self.obj)
+    end
+end
 
-    # === Core Information (assigned at construction) ===
-            
-    def name(self):
-        #=Name of the stream.
+# === Core Information (assigned at construction) ===
 
-        This is a human-readable name. For streams offered by device modules, 
-        it refers to the type of device or product series that is generating 
-        the data of the stream. If the source is an application, the name may 
-        be a more generic or specific identifier. Multiple streams with the 
-        same name can coexist, though potentially at the cost of ambiguity (for 
-        the recording app or experimenter).
+function name(self::StreamInfo)
+    #=Name of the stream.
 
-        =#
-        return lib.lsl_get_name(self.obj).decode("utf-8")
+    This is a human-readable name. For streams offered by device modules, 
+    it refers to the type of device or product series that is generating 
+    the data of the stream. If the source is an application, the name may 
+    be a more generic or specific identifier. Multiple streams with the 
+    same name can coexist, though potentially at the cost of ambiguity (for 
+    the recording app or experimenter).
 
-    def type(self):
-        #=Content type of the stream.
+    =#
+    #lib.lsl_get_name(self.obj).decode("utf-8")
+    outp = ccall((:lsl_get_name, LSLBIN), Cstring, (Ptr{Void},), self.obj)
+    # convert Cstring to Julia string if outp is not NULL
+    outp != C_NULL ? outp = unsafe_string(outp) : ""
+end
 
-        The content type is a short string such as "EEG", "Gaze" which 
-        describes the content carried by the channel (if known). If a stream 
-        contains mixed content this value need not be assigned but may instead 
-        be stored in the description of channel types. To be useful to 
-        applications and automated processing systems using the recommended 
-        content types is preferred.
+function type(self::StreamInfo)
+    #=Content type of the stream.
 
-        =#
-        return lib.lsl_get_type(self.obj).decode("utf-8")
+    The content type is a short string such as "EEG", "Gaze" which 
+    describes the content carried by the channel (if known). If a stream 
+    contains mixed content this value need not be assigned but may instead 
+    be stored in the description of channel types. To be useful to 
+    applications and automated processing systems using the recommended 
+    content types is preferred.
+
+    =#
+    # return lib.lsl_get_type(self.obj).decode("utf-8")
+    outp = ccall((:lsl_get_name, LSLBIN), Cstring, (Ptr{Void},), self.obj)
+    # convert Cstring to Julia string if outp is not NULL
+    outp != C_NULL ? outp = unsafe_string(outp) : ""
+end
     
-    def channel_count(self):
-        #=Number of channels of the stream.
+function channel_count(self::StreamInfo)
+    #=Number of channels of the stream.
 
-        A stream has at least one channel; the channel count stays constant for
-        all samples.
+    A stream has at least one channel; the channel count stays constant for
+    all samples.
 
-        =#
-        return lib.lsl_get_channel_count(self.obj)
+    =#
+    # return lib.lsl_get_channel_count(self.obj)
+    ccall((:lsl_get_channel_count, LSLBIN), Cint, (Ptr{Void},), self.obj)
+end
     
-    def nominal_srate(self):
-        #=Sampling rate of the stream, according to the source (in Hz).
+function nominal_srate(self::StreamInfo)
+    #=Sampling rate of the stream, according to the source (in Hz).
 
-        If a stream is irregularly sampled, this should be set to
-        IRREGULAR_RATE.
+    If a stream is irregularly sampled, this should be set to
+    IRREGULAR_RATE.
 
-        Note that no data will be lost even if this sampling rate is incorrect 
-        or if a device has temporary hiccups, since all samples will be 
-        transmitted anyway (except for those dropped by the device itself). 
-        However, when the recording is imported into an application, a good 
-        data importer may correct such errors more accurately if the advertised 
-        sampling rate was close to the specs of the device.
+    Note that no data will be lost even if this sampling rate is incorrect 
+    or if a device has temporary hiccups, since all samples will be 
+    transmitted anyway (except for those dropped by the device itself). 
+    However, when the recording is imported into an application, a good 
+    data importer may correct such errors more accurately if the advertised 
+    sampling rate was close to the specs of the device.
 
-        =#
-        return lib.lsl_get_nominal_srate(self.obj)
+    =#
+    # return lib.lsl_get_nominal_srate(self.obj)
+    ccall((:lsl_get_nominal_srate, LSLBIN), Cint, (Ptr{Void},), self.obj)
+end
 
-    def channel_format(self):
-        #=Channel format of the stream.
+function channel_format(self::StreamInfo)
+    #=Channel format of the stream.
 
-        All channels in a stream have the same format. However, a device might 
-        offer multiple time-synched streams each with its own format.
+    All channels in a stream have the same format. However, a device might 
+    offer multiple time-synched streams each with its own format.
 
-        =#
-        return lib.lsl_get_channel_format(self.obj)
+    =#
+    # return lib.lsl_get_channel_format(self.obj)
+    ccall((:lsl_get_nominal_srate, LSLBIN), Cint, (Ptr{Void},), self.obj)
+end
 
     def source_id(self):
         #=Unique identifier of the stream"s source, if available.
@@ -380,7 +395,7 @@ end # function StreamInfo
     end
     
     def hostname(self):
-        """Hostname of the providing machine."""
+        #=Hostname of the providing machine.=#
         return lib.lsl_get_hostname(self.obj).decode("utf-8")
     
     # === Data Description (can be modified) ===
