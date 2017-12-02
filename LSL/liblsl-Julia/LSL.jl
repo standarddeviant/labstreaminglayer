@@ -144,22 +144,23 @@ function protocol_version()
 
     =#
 
-    return ccall((:lsl_protocol_version
+    ccall((:lsl_protocol_version, LSLBIN), Cint, ())
 end
 
 
-def library_version():
-    """Version of the underlying liblsl library.
+function library_version():
+    #=Version of the underlying liblsl library.
 
     The major version is library_version() / 100;
     The minor version is library_version() % 100;
 
-    """
-    return lib.lsl_library_version()
+    =#
+    ccall((:lsl_library_version, LSLBIN), Cint, ())
+end
 
-   
-def local_clock():
-    """Obtain a local system time stamp in seconds.
+
+function local_clock():
+    #=Obtain a local system time stamp in seconds.
 
     The resolution is better than a milisecond. This reading can be used to 
     assign time stamps to samples as they are being acquired.
@@ -169,16 +170,17 @@ def local_clock():
     obtain a better estimate of when a sample was actually captured. See 
     StreamOutlet.push_sample() for a use case.
 
-    """
-    return lib.lsl_local_clock()
+    =#
+    ccall((:lsl_library_version, LSLBIN), Cint, ())
+end
 
-    
+
 # ==========================
 # === Stream Declaration ===
 # ==========================
     
-class StreamInfo:
-    """The StreamInfo object stores the declaration of a data stream.
+mutable struct StreamInfo
+    #=The StreamInfo object stores the declaration of a data stream.
 
     Represents the following information:
      a) stream data format (#channels, channel format)
@@ -193,61 +195,69 @@ class StreamInfo:
     written to disk when recording the stream (playing a similar role as a file 
     header).
 
-    """
+    =#
+    obj # should this be more struct???
+end
 
-    def __init__(self, name="untitled", type="", channel_count=1,
-                 nominal_srate=IRREGULAR_RATE, channel_format=cf_float32,
-                 source_id="", handle=None):
-        """Construct a new StreamInfo object.
+function StreamInfo(name="untitled", type="", channel_count=1,
+                nominal_srate=IRREGULAR_RATE, channel_format=cf_float32,
+                source_id="", handle=None):
+    #=Construct a new StreamInfo object.
 
-        Core stream information is specified here. Any remaining meta-data can 
-        be added later.
-        
-        Keyword arguments:
-        name -- Name of the stream. Describes the device (or product series)    
-                that this stream makes available (for use by programs, 
-                experimenters or data analysts). Cannot be empty.
-        type -- Content type of the stream. By convention LSL uses the content 
-                types defined in the XDF file format specification where 
-                applicable (https://github.com/sccn/xdf). The content type is the 
-                preferred way to find streams (as opposed to searching by name).
-        channel_count -- Number of channels per sample. This stays constant for 
-                         the lifetime of the stream. (default 1)
-        nominal_srate -- The sampling rate (in Hz) as advertised by the data 
-                         source, regular (otherwise set to IRREGULAR_RATE).
-                         (default IRREGULAR_RATE)
-        channel_format -- Format/type of each channel. If your channels have 
-                          different formats, consider supplying multiple 
-                          streams or use the largest type that can hold 
-                          them all (such as cf_double64). It is also allowed 
-                          to pass this as a string, without the cf_ prefix,
-                          e.g., "float32" (default cf_float32)
-        source_id -- Unique identifier of the device or source of the data, if 
-                     available (such as the serial number). This is critical 
-                     for system robustness since it allows recipients to 
-                     recover from failure even after the serving app, device or 
-                     computer crashes (just by finding a stream with the same 
-                     source id on the network again). Therefore, it is highly 
-                     recommended to always try to provide whatever information 
-                     can uniquely identify the data source itself.
-                     (default "")
+    Core stream information is specified here. Any remaining meta-data can 
+    be added later.
+    
+    Keyword arguments:
+    name -- Name of the stream. Describes the device (or product series)    
+            that this stream makes available (for use by programs, 
+            experimenters or data analysts). Cannot be empty.
+    type -- Content type of the stream. By convention LSL uses the content 
+            types defined in the XDF file format specification where 
+            applicable (https://github.com/sccn/xdf). The content type is the 
+            preferred way to find streams (as opposed to searching by name).
+    channel_count -- Number of channels per sample. This stays constant for 
+                        the lifetime of the stream. (default 1)
+    nominal_srate -- The sampling rate (in Hz) as advertised by the data 
+                        source, regular (otherwise set to IRREGULAR_RATE).
+                        (default IRREGULAR_RATE)
+    channel_format -- Format/type of each channel. If your channels have 
+                        different formats, consider supplying multiple 
+                        streams or use the largest type that can hold 
+                        them all (such as cf_double64). It is also allowed 
+                        to pass this as a string, without the cf_ prefix,
+                        e.g., "float32" (default cf_float32)
+    source_id -- Unique identifier of the device or source of the data, if 
+                    available (such as the serial number). This is critical 
+                    for system robustness since it allows recipients to 
+                    recover from failure even after the serving app, device or 
+                    computer crashes (just by finding a stream with the same 
+                    source id on the network again). Therefore, it is highly 
+                    recommended to always try to provide whatever information 
+                    can uniquely identify the data source itself.
+                    (default "")
 
-        """
-        if handle is not None:
-            self.obj = c_void_p(handle)
-        else:
-            if isinstance(channel_format, str):
-                channel_format = string2fmt[channel_format]
-            self.obj = lib.lsl_create_streaminfo(c_char_p(str.encode(name)),
-                                                 c_char_p(str.encode(type)),
-                                                 channel_count,
-                                                 c_double(nominal_srate),
-                                                 channel_format,
-                                                 c_char_p(str.encode(source_id)))
-            self.obj = c_void_p(self.obj)
-            if not self.obj:
-                raise RuntimeError("could not create stream description "
-                                   "object.")
+    =#
+    if handle is not None
+        self.obj = c_void_p(handle)
+    else
+        # DRCFIX WHERE IS str2fmt???
+        if isinstance(channel_format, str):
+            channel_format = string2fmt[channel_format]
+        end
+
+        self.obj = lib.lsl_create_streaminfo(c_char_p(str.encode(name)),
+                                                c_char_p(str.encode(type)),
+                                                channel_count,
+                                                c_double(nominal_srate),
+                                                channel_format,
+                                                c_char_p(str.encode(source_id)))
+        self.obj = c_void_p(self.obj)
+        if not self.obj:
+            raise RuntimeError("could not create stream description "
+                                "object.")
+        end
+    end
+end # function StreamInfo
     
     def __del__(self):
         """ Destroy a previously created StreamInfo object. """
@@ -260,7 +270,7 @@ class StreamInfo:
     # === Core Information (assigned at construction) ===
             
     def name(self):
-        """Name of the stream.
+        #=Name of the stream.
 
         This is a human-readable name. For streams offered by device modules, 
         it refers to the type of device or product series that is generating 
@@ -269,11 +279,11 @@ class StreamInfo:
         same name can coexist, though potentially at the cost of ambiguity (for 
         the recording app or experimenter).
 
-        """
+        =#
         return lib.lsl_get_name(self.obj).decode("utf-8")
 
     def type(self):
-        """Content type of the stream.
+        #=Content type of the stream.
 
         The content type is a short string such as "EEG", "Gaze" which 
         describes the content carried by the channel (if known). If a stream 
@@ -282,20 +292,20 @@ class StreamInfo:
         applications and automated processing systems using the recommended 
         content types is preferred.
 
-        """
+        =#
         return lib.lsl_get_type(self.obj).decode("utf-8")
     
     def channel_count(self):
-        """Number of channels of the stream.
+        #=Number of channels of the stream.
 
         A stream has at least one channel; the channel count stays constant for
         all samples.
 
-        """
+        =#
         return lib.lsl_get_channel_count(self.obj)
     
     def nominal_srate(self):
-        """Sampling rate of the stream, according to the source (in Hz).
+        #=Sampling rate of the stream, according to the source (in Hz).
 
         If a stream is irregularly sampled, this should be set to
         IRREGULAR_RATE.
@@ -307,56 +317,56 @@ class StreamInfo:
         data importer may correct such errors more accurately if the advertised 
         sampling rate was close to the specs of the device.
 
-        """
+        =#
         return lib.lsl_get_nominal_srate(self.obj)
 
     def channel_format(self):
-        """Channel format of the stream.
+        #=Channel format of the stream.
 
         All channels in a stream have the same format. However, a device might 
         offer multiple time-synched streams each with its own format.
 
-        """
+        =#
         return lib.lsl_get_channel_format(self.obj)
 
     def source_id(self):
-        """Unique identifier of the stream"s source, if available.
+        #=Unique identifier of the stream"s source, if available.
 
         The unique source (or device) identifier is an optional piece of 
         information that, if available, allows that endpoints (such as the 
         recording program) can re-acquire a stream automatically once it is 
         back online.
 
-        """
+        =#
         return lib.lsl_get_source_id(self.obj).decode("utf-8")
     
     # === Hosting Information (assigned when bound to an outlet/inlet) ===
     
     def version(self):
-        """Protocol version used to deliver the stream."""
+        #=Protocol version used to deliver the stream.=#
         return lib.lsl_get_version(self.obj)
     
     def created_at(self):
-        """Creation time stamp of the stream.
+        #=Creation time stamp of the stream.
 
         This is the time stamp when the stream was first created
         (as determined via local_clock() on the providing machine).
 
-        """
+        =#
         return lib.lsl_get_created_at(self.obj)
     
     def uid(self):
-        """Unique ID of the stream outlet instance (once assigned).
+        #=Unique ID of the stream outlet instance (once assigned).
 
         This is a unique identifier of the stream outlet, and is guaranteed to 
         be different across multiple instantiations of the same outlet (e.g., 
         after a re-start).
 
-        """
+        =#
         return lib.lsl_get_uid(self.obj).decode("utf-8")
 
-    def session_id(self):
-        """Session ID for the given stream.
+    function session_id(self)
+        #=Session ID for the given stream.
 
         The session id is an optional human-assigned identifier of the 
         recording session. While it is rarely used, it can be used to prevent 
@@ -365,8 +375,9 @@ class StreamInfo:
         (can be assigned in a configuration file read by liblsl, see also 
         Network Connectivity in the LSL wiki).
 
-        """
+        =#
         return lib.lsl_get_session_id(self.obj).decode("utf-8")
+    end
     
     def hostname(self):
         """Hostname of the providing machine."""
@@ -393,7 +404,7 @@ class StreamInfo:
         return XMLElement(lib.lsl_get_desc(self.obj))
                 
     def as_xml(self):
-        """Retrieve the entire stream_info in XML format.
+        #=Retrieve the entire stream_info in XML format.
 
         This yields an XML document (in string form) whose top-level element is 
         <description>. The description element contains one element for each
@@ -406,8 +417,9 @@ class StreamInfo:
         c) the extended description element <desc> with user-defined 
            sub-elements.
 
-        """
+        =#
         return lib.lsl_get_xml(self.obj).decode("utf-8")
+end # for 
         
 
 # =====================    
