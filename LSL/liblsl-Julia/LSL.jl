@@ -199,7 +199,7 @@ mutable struct StreamInfo
     obj::Ptr{Void} # should this be more specific???
 end
 
-function StreamInfo(name="untitled", type="", channel_count=1,
+function StreamInfo(name="untitled", type_="", channel_count=1,
                 nominal_srate=IRREGULAR_RATE, channel_format=cf_float32,
                 source_id="", handle=nothing)
     #=Construct a new StreamInfo object.
@@ -237,20 +237,25 @@ function StreamInfo(name="untitled", type="", channel_count=1,
                     (default "")
 
     =#
-    if handle is not nothing
-        self.obj = c_void_p(handle)
+    if handle != nothing
+        self.obj = Ptr{Void}(handle)
     else
-        # DRCFIX WHERE IS str2fmt???
+        # DRCFIX DOES str2fmt NEED TO BE ABOVE???
         if isinstance(channel_format, str):
             channel_format = string2fmt[channel_format]
         end
 
-        self.obj = lib.lsl_create_streaminfo(c_char_p(str.encode(name)),
-                                                c_char_p(str.encode(type)),
-                                                channel_count,
-                                                c_double(nominal_srate),
-                                                channel_format,
-                                                c_char_p(str.encode(source_id)))
+        # self.obj = lib.lsl_create_streaminfo(c_char_p(str.encode(name)),
+        #                                         c_char_p(str.encode(type)),
+        #                                         channel_count,
+        #                                         c_double(nominal_srate),
+        #                                         channel_format,
+        #                                         c_char_p(str.encode(source_id)))
+        outp = StreamInfo( ccall((:lsl_create_streaminfo, LSLBIN), Ptr{Void}, 
+            (Cstring, Cstring, Cint, Cdouble, Cint, Cstring), 
+            name, type_, ) 
+        )
+
         self.obj = c_void_p(self.obj)
         if not self.obj:
             raise RuntimeError("could not create stream description "
@@ -287,7 +292,7 @@ function name(self::StreamInfo)
     outp != C_NULL ? unsafe_string(outp) : ""
 end
 
-function type(self::StreamInfo)
+function type_(self::StreamInfo)
     #=Content type of the stream.
 
     The content type is a short string such as "EEG", "Gaze" which 
@@ -453,55 +458,68 @@ end
 # === Stream Outlet ===
 # =====================
         
-struct StreamOutlet
+mutable struct StreamOutlet
     #=A stream outlet.
 
     Outlets are used to make streaming data (and the meta-data) available on 
     the lab network.
 
     =# 
+    obj::Ptr{Void}
+    # DRCFIX what are the types of these vars?
+    channel_format # = info.channel_format()
+    channel_count  # = info.channel_count()
+    do_push_sample # = fmt2push_sample[self.channel_format]
+    do_push_chunk  # = fmt2push_chunk[self.channel_format]
+    value_type     # = fmt2type[self.channel_format]
+    sample_type    # = self.value_type*self.channel_count
+end
     
-    def __init__(self, info, chunk_size=0, max_buffered=360):
-        #=Establish a new stream outlet. This makes the stream discoverable.
-        
-        Keyword arguments:
-        description -- The StreamInfo object to describe this stream. Stays
-                constant over the lifetime of the outlet.
-        chunk_size --- Optionally the desired chunk granularity (in samples) 
-                       for transmission. If unspecified, each push operation 
-                       yields one chunk. Inlets can override this setting.
-                       (default 0)
-        max_buffered -- Optionally the maximum amount of data to buffer (in 
-                        seconds if there is a nominal sampling rate, otherwise 
-                        x100 in samples). The default is 6 minutes of data. 
-                        Note that, for high-bandwidth data, you will want to 
-                        use a lower value here to avoid running out of RAM.
-                        (default 360)
+function StreamOutlet(info, chunk_size=0, max_buffered=360):
+    #=Establish a new stream outlet. This makes the stream discoverable.
+    
+    Keyword arguments:
+    description -- The StreamInfo object to describe this stream. Stays
+            constant over the lifetime of the outlet.
+    chunk_size --- Optionally the desired chunk granularity (in samples) 
+                    for transmission. If unspecified, each push operation 
+                    yields one chunk. Inlets can override this setting.
+                    (default 0)
+    max_buffered -- Optionally the maximum amount of data to buffer (in 
+                    seconds if there is a nominal sampling rate, otherwise 
+                    x100 in samples). The default is 6 minutes of data. 
+                    Note that, for high-bandwidth data, you will want to 
+                    use a lower value here to avoid running out of RAM.
+                    (default 360)
 
-        =#
-        self.obj = lib.lsl_create_outlet(info.obj, chunk_size, max_buffered)
-        self.obj = c_void_p(self.obj)
-        if not self.obj:
-            raise RuntimeError("could not create stream outlet.")
-        self.channel_format = info.channel_format()
-        self.channel_count = info.channel_count()
-        self.do_push_sample = fmt2push_sample[self.channel_format]
-        self.do_push_chunk = fmt2push_chunk[self.channel_format]
-        self.value_type = fmt2type[self.channel_format]
-        self.sample_type = self.value_type*self.channel_count
+    =#
+    obj = Ptr{Void}(lib.lsl_create_outlet(info.obj, chunk_size, max_buffered))
+    if obj == C_NULL
+        throw(ErrorException("could not create stream outlet."))
+    end
+    self = StreamOutlet(
+        obj, 
+        info.channel_format(), # channel_format
+        info.channel_count(), # channel_count
+        fmt2push_sample[self.channel_format], # do_push_sample
+        fmt2push_chunk[self.channel_format], # do_push_chunk
+        fmt2type[self.channel_format], # value_type
+        fmt2type[self.channel_format] * info.channel_count() # sample_type
+    )
+end
                 
-    def __del__(self):
-        """Destroy an outlet.
+def __del__(self):
+    #=Destroy an outlet.
 
-        The outlet will no longer be discoverable after destruction and all 
-        connected inlets will stop delivering data.
+    The outlet will no longer be discoverable after destruction and all 
+    connected inlets will stop delivering data.
 
-        """
-        # noinspection PyBroadException
-        try:
-            lib.lsl_destroy_outlet(self.obj)
-        except:
-            pass
+    =#
+    # noinspection PyBroadException
+    try:
+        lib.lsl_destroy_outlet(self.obj)
+    except:
+        pass
         
     def push_sample(self, x, timestamp=0.0, pushthrough=True):
         """Push a sample into the outlet.
