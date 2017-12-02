@@ -196,12 +196,12 @@ mutable struct StreamInfo
     header).
 
     =#
-    obj # should this be more struct???
+    obj::Ptr{Void} # should this be more specific???
 end
 
 function StreamInfo(name="untitled", type="", channel_count=1,
                 nominal_srate=IRREGULAR_RATE, channel_format=cf_float32,
-                source_id="", handle=None)
+                source_id="", handle=nothing)
     #=Construct a new StreamInfo object.
 
     Core stream information is specified here. Any remaining meta-data can 
@@ -237,7 +237,7 @@ function StreamInfo(name="untitled", type="", channel_count=1,
                     (default "")
 
     =#
-    if handle is not None
+    if handle is not nothing
         self.obj = c_void_p(handle)
     else
         # DRCFIX WHERE IS str2fmt???
@@ -453,16 +453,16 @@ end
 # === Stream Outlet ===
 # =====================
         
-class StreamOutlet:
-    """A stream outlet.
+struct StreamOutlet
+    #=A stream outlet.
 
     Outlets are used to make streaming data (and the meta-data) available on 
     the lab network.
 
-    """ 
+    =# 
     
     def __init__(self, info, chunk_size=0, max_buffered=360):
-        """Establish a new stream outlet. This makes the stream discoverable.
+        #=Establish a new stream outlet. This makes the stream discoverable.
         
         Keyword arguments:
         description -- The StreamInfo object to describe this stream. Stays
@@ -478,7 +478,7 @@ class StreamOutlet:
                         use a lower value here to avoid running out of RAM.
                         (default 360)
 
-        """
+        =#
         self.obj = lib.lsl_create_outlet(info.obj, chunk_size, max_buffered)
         self.obj = c_void_p(self.obj)
         if not self.obj:
@@ -687,7 +687,7 @@ def resolve_bypred(predicate, minimum=1, timeout=FOREVER):
 def free_char_p_array_memory(char_p_array,num_elements):
     pointers = cast(char_p_array, POINTER(c_void_p))
     for p in range(num_elements):
-        if pointers[p] is not None:  # only free initialized pointers
+        if pointers[p] is not nothing:  # only free initialized pointers
             lib.lsl_destroy_string(pointers[p])
 
 # ====================
@@ -839,7 +839,7 @@ class StreamInlet:
         handle_error(errcode)
         return result
         
-    def pull_sample(self, timeout=FOREVER, sample=None):
+    def pull_sample(self, timeout=FOREVER, sample=nothing):
         """Pull a sample from the inlet and return it.
         
         Keyword arguments:
@@ -849,7 +849,7 @@ class StreamInlet:
         
         Returns a tuple (sample,timestamp) where sample is a list of channel 
         values and timestamp is the capture time of the sample on the remote 
-        machine, or (None,None) if no new sample was available. To remap this 
+        machine, or (nothing,nothing) if no new sample was available. To remap this 
         time stamp to the local clock, add the value returned by 
         .time_correction() to it. 
         
@@ -864,7 +864,7 @@ class StreamInlet:
             assign_to = timeout
             timeout = sample if type(sample) is float else 0.0
         else:
-            assign_to = None
+            assign_to = nothing
                 
         errcode = c_int()
         timestamp = self.do_pull_sample(self.obj, byref(self.sample),
@@ -875,13 +875,13 @@ class StreamInlet:
             sample = [v for v in self.sample]
             if self.channel_format == cf_string:
                 sample = [v.decode("utf-8") for v in sample]
-            if assign_to is not None:
+            if assign_to is not nothing:
                 assign_to[:] = sample
             return sample, timestamp
         else:
-            return None, None
+            return nothing, nothing
         
-    def pull_chunk(self, timeout=0.0, max_samples=1024, dest_obj=None):
+    def pull_chunk(self, timeout=0.0, max_samples=1024, dest_obj=nothing):
         """Pull a chunk of samples from the inlet.
         
         Keyword arguments:
@@ -896,7 +896,7 @@ class StreamInlet:
                     It is up to the caller to trim the buffer to the appropriate
                     number of samples.
                     A numpy buffer must be order="C"
-                    (default None)
+                    (default nothing)
                        
         Returns a tuple (samples,timestamps) where samples is a list of samples 
         (each itself a list of values), and timestamps is a list of time-stamps.
@@ -912,7 +912,7 @@ class StreamInlet:
             # noinspection PyCallingNonCallable
             self.buffers[max_samples] = ((self.value_type*max_values)(),
                                          (c_double*max_samples)())
-        if dest_obj is not None:
+        if dest_obj is not nothing:
             data_buff = (self.value_type * max_values).from_buffer(dest_obj)
         else:
             data_buff = self.buffers[max_samples][0]
@@ -929,14 +929,14 @@ class StreamInlet:
         # return results (note: could offer a more efficient format in the 
         # future, e.g., a numpy array)
         num_samples = num_elements/num_channels
-        if dest_obj is None:
+        if dest_obj is nothing:
             samples = [[data_buff[s*num_channels+c] for c in range(num_channels)]
                        for s in range(int(num_samples))]
             if self.channel_format == cf_string:
                 samples = [[v.decode("utf-8") for v in s] for s in samples]
                 free_char_p_array_memory(data_buff, max_values)
         else:
-            samples = None
+            samples = nothing
         timestamps = [ts_buff[s] for s in range(int(num_samples))]
         return samples, timestamps
         
@@ -997,25 +997,25 @@ class XMLElement:
         """Get a child with a specified name."""
         return XMLElement(lib.lsl_child(self.e, str.encode(name)))
         
-    def next_sibling(self, name=None):
+    def next_sibling(self, name=nothing):
         """Get the next sibling in the children list of the parent node.
 
         If a name is provided, the next sibling with the given name is returned.
 
         """
-        if name is None:
+        if name is nothing:
             return XMLElement(lib.lsl_next_sibling(self.e))
         else:
             return XMLElement(lib.lsl_next_sibling_n(self.e, str.encode(name)))
     
-    def previous_sibling(self, name=None):
+    def previous_sibling(self, name=nothing):
         """Get the previous sibling in the children list of the parent node.
 
         If a name is provided, the previous sibling with the given name is
         returned.
 
         """
-        if name is None:
+        if name is nothing:
             return XMLElement(lib.lsl_previous_sibling(self.e))
         else:
             return XMLElement(lib.lsl_previous_sibling_n(self.e,
@@ -1047,14 +1047,14 @@ class XMLElement:
         """Value of the element."""
         return lib.lsl_value(self.e).decode("utf-8")
         
-    def child_value(self, name=None):
+    def child_value(self, name=nothing):
         """Get child value (value of the first child that is text).
 
         If a name is provided, then the value of the first child with the
         given name is returned.
 
         """
-        if name is None:
+        if name is nothing:
             res = lib.lsl_child_value(self.e)
         else:
             res = lib.lsl_child_value_n(self.e, str.encode(name))
@@ -1127,7 +1127,7 @@ class ContinuousResolver:
 
     """
     
-    def __init__(self, prop=None, value=None, pred=None, forget_after=5.0):
+    def __init__(self, prop=nothing, value=nothing, pred=nothing, forget_after=5.0):
         """Construct a new continuous_resolver.
 
         Keyword arguments:
@@ -1137,18 +1137,18 @@ class ContinuousResolver:
                         resolver.
 
         """
-        if pred is not None:
-            if prop is not None or value is not None:
+        if pred is not nothing:
+            if prop is not nothing or value is not nothing:
                 raise ValueError("you can only either pass the prop/value "
                                  "argument or the pred argument, but not "
                                  "both.")
             self.obj = lib.lsl_create_continuous_resolver_bypred(str.encode(pred),
                                                                  c_double(forget_after))
-        elif prop is not None and value is not None:
+        elif prop is not nothing and value is not nothing:
             self.obj = lib.lsl_create_continuous_resolver_byprop(str.encode(prop),
                                                                  str.encode(value),
                                                                  c_double(forget_after))
-        elif prop is not None or value is not None:
+        elif prop is not nothing or value is not nothing:
             raise ValueError("if prop is specified, then value must be "
                              "specified, too, and vice versa.")
         else:
@@ -1390,5 +1390,5 @@ try:
                       lib.lsl_pull_chunk_s, lib.lsl_pull_chunk_c, []]
 except:
     # if not available
-    fmt2push_chunk = [None, None, None, None, None, None, None, None]
-    fmt2pull_chunk = [None, None, None, None, None, None, None, None]
+    fmt2push_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
+    fmt2pull_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
