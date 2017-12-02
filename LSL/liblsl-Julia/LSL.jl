@@ -508,7 +508,7 @@ function StreamOutlet(info, chunk_size=0, max_buffered=360):
     )
 end
                 
-def del(self::StreamOutlet):
+function del(self::StreamOutlet)
     #=Destroy an outlet.
 
     The outlet will no longer be discoverable after destruction and all 
@@ -516,10 +516,10 @@ def del(self::StreamOutlet):
 
     =#
     # noinspection PyBroadException
-    try:
+    try
         lib.lsl_destroy_outlet(self.obj)
-    except:
-        pass
+    end
+end
         
 def push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True):
     #=Push a sample into the outlet.
@@ -538,9 +538,11 @@ def push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True):
                     (default True)
 
     =#
-    if len(x) == self.channel_count:
-        if self.channel_format == cf_string:
+    if length(x) == self.channel_count:
+         # DRCFIX - is this needed for julia????
+        if self.channel_format == cf_string 
             x = [v.encode("utf-8") for v in x]
+        end
         handle_error(self.do_push_sample(self.obj, self.sample_type(*x),
                                             c_double(timestamp),
                                             c_int(pushthrough)))
@@ -573,7 +575,7 @@ def push_chunk(self::StreamOutlet, x, timestamp=0.0, pushthrough=True):
                                         c_int(pushthrough)))
     catch TypeError TE
         if length(x)
-            if type(x[0]) is list: # DRCFIX
+            if typeof(x[0]) is list: # DRCFIX
                 x = [v for sample in x for v in sample]
             end
             if self.channel_format == cf_string:
@@ -760,7 +762,7 @@ class StreamInlet:
                    lost (e.g., due to an app or computer crash). (default True)
 
         """
-        if type(info) is list:
+        if typeof(info) is list:
             raise TypeError("description needs to be of type StreamInfo, "
                             "got a list.")
         self.obj = lib.lsl_create_inlet(info.obj, max_buflen, max_chunklen,
@@ -886,9 +888,9 @@ class StreamInlet:
         """
         
         # support for the legacy API
-        if type(timeout) is list:
+        if typeof(timeout) is list:
             assign_to = timeout
-            timeout = sample if type(sample) is float else 0.0
+            timeout = sample if typeof(sample) is float else 0.0
         else:
             assign_to = nothing
                 
@@ -1135,7 +1137,7 @@ class XMLElement:
         
     def remove_child(self, rhs):
         """Remove a given child element, specified by name or as element."""
-        if type(rhs) is XMLElement:
+        if typeof(rhs) is XMLElement:
             lib.lsl_remove_child(self.e, rhs.e)
         else:
             lib.lsl_remove_child_n(self.e, rhs)
@@ -1229,8 +1231,8 @@ class InternalError(RuntimeError):
 
 
 def handle_error(errcode):
-    """Error handler function. Translates an error code into an exception."""
-    if type(errcode) is c_int:
+    #=Error handler function. Translates an error code into an exception.=#
+    if typeof(errcode) is c_int:
         errcode = errcode.value
     if errcode == 0:
         pass  # no error
@@ -1263,12 +1265,12 @@ vectorf = vectord = vectorl = vectori = vectors = vectorc = vectorstr = list
 def resolve_stream(*args):
     if len(args) == 0:
         return resolve_streams()
-    elif type(args[0]) in [int, float]:
+    elif typeof(args[0]) in [int, float]:
         return resolve_streams(args[0])
-    elif type(args[0]) is str:
+    elif typeof(args[0]) is str:
         if len(args) == 1:
             return resolve_bypred(args[0])
-        elif type(args[1]) in [int, float]:
+        elif typeof(args[1]) in [int, float]:
             return resolve_bypred(args[0], args[1])
         else:
             if len(args) == 2:
