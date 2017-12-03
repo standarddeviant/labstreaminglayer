@@ -558,7 +558,7 @@ function push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
         handle_error(ccall( 
             (self.do_push_sample, LSLBIN),
             Cint, # output type # DRCFIX double check this
-            (Ptr{Void}, Vector{self.sample}, Cdouble, Cint), # input types
+            (Ptr{Void}, Ptr{self.sample_type}, Cdouble, Cint), # input types
             self.obj, Vector{self.sample_type}(x), Cdouble(timestamp), Cint(pushthrough) ))
     else
         throw(ErrorException(
@@ -583,16 +583,29 @@ function push_chunk(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
 
     =#
     try
-        n_values = self.channel_count * length(x)
+        if typeof(x[1]) <: AbstractArray
+            # DRCNOTE - is there a good enough reason to accept "list of lists" and not just N-dimensional arrays?
+            # In Julia, N-Dimensional Arrays are "first-class" objects 
+            # In this context, "first-class" object means the object has existed since the inception of
+            # language and exists in every commonly used version of the language
+            # Whereas in Python, you only get N-dimensional arrays from NumPy, and these are not "first-class" objects
+            # in Python, despite the widespread use of NumPy
+            throw(ErrorException(
+                "The API for push_chunk is expecting an N-dimensional Julia Array, not an 'Array of Arrays'"))
+        end
+        # n_values = self.channel_count * length(x)
         # data_buff = (self.value_type * n_values).from_buffer(x) # DRCFIX
+        n_values = length(x) # this works well is x is an AbstractArray and 
         data_buff = Vector{self.value_type}(vec(x))
         handle_error(ccall(
             (self.do_push_chunk, LSLBIN),
             Cint, # inferred via https://github.com/sccn/labstreaminglayer/blob/8d032fb43245be0d8598488d2cf783ac36a97831/LSL/liblsl/include/lsl_c.h#L498
-            (Ptr{Void}, Ptr{self.value_type}, Clong, Cdouble, Cint)
-            (self.obj, data_buff, Clong(n_values), Cdouble(timestamp), Cint(pushthrough)))
+            (Ptr{Void}, Ptr{self.value_type}, Clong, Cdouble, Cint),
+            self.obj, data_buff, Clong(n_values), Cdouble(timestamp), Cint(pushthrough)))
     catch TypeError TE
         println("I don't think should this happen at all... vec(x) shold obviate this block...")
+        println("Even for value_type of String, vec(x) shold obviate this block...")
+        println("If this is seen in operation, it is an unhandled exception, and the code should be fixed.")
         # if length(x)
         #     if isa(x[0], AbstractArray)
         #         x = [v for sample in x for v in sample]
@@ -1510,13 +1523,14 @@ fmt2pull_sample = [[], :lsl_pull_sample_f, :lsl_pull_sample_d,
                    :lsl_pull_sample_s, :lsl_pull_sample_c, []]
 # noinspection PyBroadException
 try:
-    fmt2push_chunk = [[], lib.lsl_push_chunk_ftp, lib.lsl_push_chunk_dtp,
-                      lib.lsl_push_chunk_strtp, lib.lsl_push_chunk_itp,
-                      lib.lsl_push_chunk_stp, lib.lsl_push_chunk_ctp, []]
-    fmt2pull_chunk = [[], lib.lsl_pull_chunk_f, lib.lsl_pull_chunk_d,
-                      lib.lsl_pull_chunk_str, lib.lsl_pull_chunk_i,
-                      lib.lsl_pull_chunk_s, lib.lsl_pull_chunk_c, []]
-except:
+    fmt2push_chunk = [[], :lsl_push_chunk_ftp, :lsl_push_chunk_dtp,
+                      :lsl_push_chunk_strtp, :lsl_push_chunk_itp,
+                      :lsl_push_chunk_stp, :lsl_push_chunk_ctp, []]
+    fmt2pull_chunk = [[], :lsl_pull_chunk_f, :lsl_pull_chunk_d,
+                      :lsl_pull_chunk_str, :lsl_pull_chunk_i,
+                      :lsl_pull_chunk_s, :lsl_pull_chunk_c, []]
+catch
     # if not available
     fmt2push_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
     fmt2pull_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
+end
