@@ -143,12 +143,11 @@ function protocol_version()
     together.
 
     =#
-
     ccall((:lsl_protocol_version, LSLBIN), Cint, ())
 end
 
 
-function library_version():
+function library_version()
     #=Version of the underlying liblsl library.
 
     The major version is library_version() / 100;
@@ -159,7 +158,7 @@ function library_version():
 end
 
 
-function local_clock():
+function local_clock()
     #=Obtain a local system time stamp in seconds.
 
     The resolution is better than a milisecond. This reading can be used to 
@@ -251,10 +250,11 @@ function StreamInfo(name="untitled", type_="", channel_count=1,
         #                                         c_double(nominal_srate),
         #                                         channel_format,
         #                                         c_char_p(str.encode(source_id)))
-        outp = StreamInfo( ccall((:lsl_create_streaminfo, LSLBIN), Ptr{Void}, 
+        outp = StreamInfo(ccall((:lsl_create_streaminfo, LSLBIN), 
+            Ptr{Void}, 
             (Cstring, Cstring, Cint, Cdouble, Cint, Cstring), 
-            name, type_, ) 
-        )
+            name, type_, Cint(channel_count), Cdouble(nominal_srate), Cint(channel_count), source_id
+        ))
 
         self.obj = c_void_p(self.obj)
         if not self.obj:
@@ -368,7 +368,10 @@ end
     
 function version(self::StreamInfo)
     #=Protocol version used to deliver the stream.=#
-    return lib.lsl_get_version(self.obj)
+    # return lib.lsl_get_version(self.obj)
+    ccall((:lsl_get_version, LSLBIN), Cint, (Ptr{Void},), self.obj)
+end
+
 
 function created_at(self::StreamInfo)
     #=Creation time stamp of the stream.
@@ -377,7 +380,9 @@ function created_at(self::StreamInfo)
     (as determined via local_clock() on the providing machine).
 
     =#
-    return lib.lsl_get_created_at(self.obj)
+    # return lib.lsl_get_created_at(self.obj)
+    ccall((:lsl_get_created_at, LSLBIN), Cdouble, (Ptr{Void},), self.obj)
+end
 
 function uid(self::StreamInfo)
     #=Unique ID of the stream outlet instance (once assigned).
@@ -387,7 +392,13 @@ function uid(self::StreamInfo)
     after a re-start).
 
     =#
-    return lib.lsl_get_uid(self.obj).decode("utf-8")
+    # return lib.lsl_get_uid(self.obj).decode("utf-8")
+    # DRCFIX - is more needed to safely retrieve Cstring here???
+    outp = ccall((:lsl_get_uid, LSLBIN), Cstring, (Ptr{Void},), self.obj)
+    if outp == C_NULL
+        error("Unable to resolve uid, received C_NULL from lsl_get_uid")
+    end
+    unsafe_string(outp) # convert Ptr{Cchar} to a Julia String
 end
 
 function session_id(self::StreamInfo)
@@ -401,12 +412,25 @@ function session_id(self::StreamInfo)
     Network Connectivity in the LSL wiki).
 
     =#
-    return lib.lsl_get_session_id(self.obj).decode("utf-8")
+    # return lib.lsl_get_session_id(self.obj).decode("utf-8")
+    # DRCFIX - is more needed to safely retrieve Cstring here???
+    outp = ccall((:lsl_get_session_id, LSLBIN), Cstring, (Ptr{Void},), self.obj)
+    if outp == C_NULL
+        error("Unable to resolve uid, received C_NULL from lsl_get_session_id")
+    end
+    unsafe_string(outp) # convert Ptr{Cchar} to a Julia String    
 end
     
 function hostname(self::StreamInfo)
     #=Hostname of the providing machine.=#
-    return lib.lsl_get_hostname(self.obj).decode("utf-8")
+    # return lib.lsl_get_hostname(self.obj).decode("utf-8")
+    # DRCFIX - is more needed to safely retrieve Cstring here???
+    outp = ccall((:lsl_get_hostname, LSLBIN), Cstring, (Ptr{Void},), self.obj)
+    if outp == C_NULL
+        error("Unable to resolve uid, received C_NULL from lsl_get_hostname")
+    end
+    unsafe_string(outp) # convert Ptr{Cchar} to a Julia String    
+
 end
     
 # === Data Description (can be modified) ===
@@ -493,13 +517,11 @@ function StreamOutlet(info, chunk_size=0, max_buffered=360):
                     (default 360)
 
     =#
-    obj = Ptr{Void}(
-        ccall((:lsl_create_outlet, LSLBIN), 
+    obj = Ptr{Void}(ccall((:lsl_create_outlet, LSLBIN), 
             Ptr{Void},
             (Ptr{Void}, Cint, Cint),
             info.obj, chunk_size, max_buffered
-        )
-    )
+    ))
     if obj == C_NULL
         throw(ErrorException("could not create stream outlet, obj==C_NULL"))
     end
@@ -529,7 +551,8 @@ function del(self::StreamOutlet)
     =#
     # noinspection PyBroadException
     try
-        lib.lsl_destroy_outlet(self.obj)
+        # lib.lsl_destroy_outlet(self.obj)
+        ccall((:lsl_destroy_outlet, LSLBIN), Void, (Ptr{Void},), self.obj)
     end
 end
         
@@ -559,7 +582,8 @@ function push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
             (self.do_push_sample, LSLBIN),
             Cint, # output type # DRCFIX double check this
             (Ptr{Void}, Ptr{self.sample_type}, Cdouble, Cint), # input types
-            self.obj, Vector{self.sample_type}(x), Cdouble(timestamp), Cint(pushthrough) ))
+            self.obj, Vector{self.sample_type}(x), Cdouble(timestamp), Cint(pushthrough)
+        ))
     else
         throw(ErrorException(
             "length of the data must correspond to the stream's channel count."))
@@ -597,11 +621,11 @@ function push_chunk(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
         # data_buff = (self.value_type * n_values).from_buffer(x) # DRCFIX
         n_values = length(x) # this works well is x is an AbstractArray and 
         data_buff = Vector{self.value_type}(vec(x))
-        handle_error(ccall(
-            (self.do_push_chunk, LSLBIN),
+        handle_error(ccall((self.do_push_chunk, LSLBIN),
             Cint, # inferred via https://github.com/sccn/labstreaminglayer/blob/8d032fb43245be0d8598488d2cf783ac36a97831/LSL/liblsl/include/lsl_c.h#L498
             (Ptr{Void}, Ptr{self.value_type}, Clong, Cdouble, Cint),
-            self.obj, data_buff, Clong(n_values), Cdouble(timestamp), Cint(pushthrough)))
+            self.obj, data_buff, Clong(n_values), Cdouble(timestamp), Cint(pushthrough)
+        ))
     catch TypeError TE
         println("I don't think should this happen at all... vec(x) shold obviate this block...")
         println("Even for value_type of String, vec(x) shold obviate this block...")
@@ -638,9 +662,8 @@ function have_consumers(self::StreamOutlet)
 
     =#
     # return bool(lib.lsl_have_consumers(self.obj))
-    ccall((:lsl_have_consumers, LSLBIN),
-        Cint, # inferred via https://github.com/sccn/labstreaminglayer/blob/master/LSL/liblsl/include/lsl_c.h#L586
-        (Ptr{Void}, ), self.obj)
+    # return type (Cint) inferred via https://github.com/sccn/labstreaminglayer/blob/master/LSL/liblsl/include/lsl_c.h#L586
+    ccall((:lsl_have_consumers, LSLBIN), Cint, (Ptr{Void}, ), self.obj)
 end
     
 function wait_for_consumers(self::StreamOutlet, timeout)
@@ -689,7 +712,8 @@ function resolve_streams(wait_time=1.0)
     num_found = ccall((:lsl_resolve_all, LSLBIN), 
         Cint, 
         (Ptr{Ptr{Void}}, Cint, Cdouble),
-        pointer(buffer), Cint(1024), Cdouble(wait_time))
+        pointer(buffer), Cint(1024), Cdouble(wait_time)
+    )
     return [StreamInfo(handle=buffer[k]) for k in range(1,num_found)]
 end
 
@@ -726,7 +750,8 @@ function resolve_byprop(prop, value, minimum=1, timeout=FOREVER)
     num_found = ccall((:lsl_resolve_byprop, LSLBIN), 
         Cint, 
         (Ptr{Ptr{Void}}, Cint, Cstring, Cstring, Cint, Cdouble),
-        pointer(buffer), Cint(1024), prop, value, minimum, Cdouble(wait_time))
+        pointer(buffer), Cint(1024), prop, value, minimum, Cdouble(wait_time)
+    )
     [StreamInfo(handle=buffer[k]) for k in range(1,num_found)]
 end
 
@@ -759,9 +784,10 @@ function resolve_bypred(predicate, minimum=1, timeout=FOREVER)
     #                                    minimum,
     #                                    c_double(timeout))
     num_found = ccall((:lsl_resolve_byprop, LSLBIN), 
-    Cint, 
-    (Ptr{Ptr{Void}}, Cint, Cstring, Cstring, Cint, Cdouble),
-    pointer(buffer), Cint(1024), predicate, minimum, Cdouble(wait_time))
+        Cint, 
+        (Ptr{Ptr{Void}}, Cint, Cstring, Cstring, Cint, Cdouble),
+        pointer(buffer), Cint(1024), predicate, minimum, Cdouble(wait_time)
+    )
     return [StreamInfo(handle=buffer[k]) for k in range(1,num_found)]
 end
 
@@ -840,7 +866,8 @@ function StreamInlet(info, max_buflen=360, max_chunklen=0, recover=True, process
     obj = ccall((:lsl_create_inlet, LSLBIN),
         Ptr{Void},
         (Ptr{Void}, Cint, Cint, Cint)
-        info.obj, Cint(max_buflen), Cint(max_chunklen), Cint(recover))
+        info.obj, Cint(max_buflen), Cint(max_chunklen), Cint(recover)
+    )
     obj = Ptr{Void}(obj)
 
     if obj == C_NULL
@@ -857,30 +884,32 @@ function StreamInlet(info, max_buflen=360, max_chunklen=0, recover=True, process
     do_pull_sample = fmt2pull_sample[channel_format]
     do_pull_chunk  = fmt2pull_chunk[channel_format]
     value_type     = fmt2type[channel_format]
-    sample_type    = value_type * channel_count # DRCFIX, we can't use ctypes trick of multiplying basic type...
-    sample         = sample_type()
+    sample_type    = value_type  # DRCNOTE, we can't use ctypes trick of multiplying basic type...
+    sample         = sample_type # DRCNOTE, so value_type == sample_type == sample, keeping all three for now
+    buffers        = Dict() # DRCNOTE, this was a dictionary in python impl, copying that logic for now
     StreamInfo(
         obj,
-        info.channel_format(),                # channel_format
-        info.channel_count(),                 # channel_count
-        fmt2pull_sample[info.channel_format], # do_pull_sample
-        fmt2pull_chunk[info.channel_format],  # do_pull_chunk
-        fmt2type[self.channel_format],        # value_type
-        self.value_type*self.channel_count,   # sample_type
-        self.sample_type(),                   # sample
-        buffers = {}
+        channel_format,
+        channel_count,
+        do_pull_sample,
+        do_pull_chunk,
+        value_type,
+        sample_type,
+        sample,
+        buffers
     )
 end
 
-function __del__(self::StreamInlet)
+function del(self::StreamInlet)
     #=Destructor. The inlet will automatically disconnect if destroyed.=#
     # noinspection PyBroadException
     try
-        lib.lsl_destroy_inlet(self.obj)
+        # lib.lsl_destroy_inlet(self.obj)
+        ccall((:lsl_destroy_inlet, LSLBIN), Void, (Ptr{Void},), self.obj)
     end
 end
     
-function info(self, timeout=FOREVER)
+function info(self::StreamInlet, timeout=FOREVER)
     #=Retrieve the complete information of the given stream.
 
     This includes the extended description. Can be invoked at any time of
@@ -893,14 +922,20 @@ function info(self, timeout=FOREVER)
     stream source has been lost).
 
     =#
-    errcode = c_int()
-    result = lib.lsl_get_fullinfo(self.obj, c_double(timeout),
-                                    byref(errcode))
+    # errcode = c_int()
+    errcode = Cint(0)
+    # result = lib.lsl_get_fullinfo(self.obj, c_double(timeout),
+    #                                 byref(errcode))
+    result = ccall((:lsl_get_fullinfo, LSLBIN),
+        Ptr{Void},
+        (Ptr{Void}, Cdouble, Ptr{Cint}),
+        self.obj, Cdouble(timeout), pointer(errcode) 
+    )
     handle_error(errcode)
     return StreamInfo(handle=result)
 end
 
-function open_stream(self, timeout=FOREVER)
+function open_stream(self::StreamInlet, timeout=FOREVER)
     #=Subscribe to the data stream.
 
     All samples pushed in at the other end from this moment onwards will be 
@@ -920,7 +955,7 @@ function open_stream(self, timeout=FOREVER)
     handle_error(errcode)
 end
     
-function close_stream(self)
+function close_stream(self::StreamInlet)
     #=Drop the current data stream.
 
     All samples that are still buffered or in flight will be dropped and 
@@ -934,7 +969,7 @@ function close_stream(self)
     lib.lsl_close_stream(self.obj)
 end
 
-function time_correction(self, timeout=FOREVER)
+function time_correction(self::StreamInlet, timeout=FOREVER)
     #=Retrieve an estimated time correction offset for the given stream.
 
     The first call to this function takes several miliseconds until a 
@@ -962,7 +997,7 @@ function time_correction(self, timeout=FOREVER)
     return result
 end
     
-function pull_sample(self, timeout=FOREVER, sample=nothing)
+function pull_sample(self::StreamInlet, timeout=FOREVER, sample=nothing)
     #=Pull a sample from the inlet and return it.
     
     Keyword arguments:
