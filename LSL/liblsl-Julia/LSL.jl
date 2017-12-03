@@ -493,7 +493,13 @@ function StreamOutlet(info, chunk_size=0, max_buffered=360):
                     (default 360)
 
     =#
-    obj = Ptr{Void}(lib.lsl_create_outlet(info.obj, chunk_size, max_buffered))
+    obj = Ptr{Void}(
+        ccall((:lsl_create_outlet, LSLBIN), 
+            Ptr{Void},
+            (Ptr{Void}, Cint, Cint),
+            info.obj, chunk_size, max_buffered
+        )
+    )
     if obj == C_NULL
         throw(ErrorException("could not create stream outlet, obj==C_NULL"))
     end
