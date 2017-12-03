@@ -664,8 +664,8 @@ function resolve_streams(wait_time=1.0)
     num_found = ccall((:lsl_resolve_all, LSLBIN), 
         Cint, 
         (Ptr{Ptr{Void}}, Cint, Cdouble),
-        buffer, Cint(1024), Cdouble(wait_time))
-    return [StreamInfo(handle=buffer[k]) for k in range(num_found)]
+        pointer(buffer), Cint(1024), Cdouble(wait_time))
+    return [StreamInfo(handle=buffer[k]) for k in range(1,num_found)]
 end
 
 
@@ -701,12 +701,12 @@ function resolve_byprop(prop, value, minimum=1, timeout=FOREVER)
     num_found = ccall((:lsl_resolve_byprop, LSLBIN), 
         Cint, 
         (Ptr{Ptr{Void}}, Cint, Cstring, Cstring, Cint, Cdouble),
-        buffer, Cint(1024), prop, value, minimum, Cdouble(wait_time))
-    return [StreamInfo(handle=buffer[k]) for k in range(num_found)]
+        pointer(buffer), Cint(1024), prop, value, minimum, Cdouble(wait_time))
+    [StreamInfo(handle=buffer[k]) for k in range(1,num_found)]
 end
 
-def resolve_bypred(predicate, minimum=1, timeout=FOREVER):
-    """Resolve all streams that match a given predicate.
+function resolve_bypred(predicate, minimum=1, timeout=FOREVER)
+    #=Resolve all streams that match a given predicate.
 
     Advanced query that allows to impose more conditions on the retrieved 
     streams; the given string is an XPath 1.0 predicate for the <description>
@@ -725,24 +725,33 @@ def resolve_bypred(predicate, minimum=1, timeout=FOREVER):
     Returns a list of matching StreamInfo objects (with empty desc field), any 
     of which can subsequently be used to open an inlet.
 
-    """
+    =#
     # noinspection PyCallingNonCallable
-    buffer = (c_void_p*1024)()
-    num_found = lib.lsl_resolve_bypred(byref(buffer), 1024,
-                                       c_char_p(str.encode(predicate)),
-                                       minimum,
-                                       c_double(timeout))
-    return [StreamInfo(handle=buffer[k]) for k in range(num_found)]
+    # buffer = (c_void_p*1024)()
+    buffer = Vector{Ptr{Void}}(1024) #(c_void_p*1024)()
+    # num_found = lib.lsl_resolve_bypred(byref(buffer), 1024,
+    #                                    c_char_p(str.encode(predicate)),
+    #                                    minimum,
+    #                                    c_double(timeout))
+    num_found = ccall((:lsl_resolve_byprop, LSLBIN), 
+    Cint, 
+    (Ptr{Ptr{Void}}, Cint, Cstring, Cstring, Cint, Cdouble),
+    pointer(buffer), Cint(1024), predicate, minimum, Cdouble(wait_time))
+    return [StreamInfo(handle=buffer[k]) for k in range(1,num_found)]
+end
 
 
 # ====================
 # === Memory functions
 # ====================
-def free_char_p_array_memory(char_p_array,num_elements):
-    pointers = cast(char_p_array, POINTER(c_void_p))
-    for p in range(num_elements):
+function free_char_p_array_memory(char_p_array,num_elements)
+    pointers = Ptr{Void}.(char_p_array) # the dot syntax for vectorizing functions
+    for p in range(1,num_elements)
         if pointers[p] is not nothing:  # only free initialized pointers
             lib.lsl_destroy_string(pointers[p])
+        end
+    end
+end
 
 # ====================
 # === Stream Inlet ===
@@ -984,14 +993,14 @@ class StreamInlet:
         # future, e.g., a numpy array)
         num_samples = num_elements/num_channels
         if dest_obj is nothing:
-            samples = [[data_buff[s*num_channels+c] for c in range(num_channels)]
-                       for s in range(int(num_samples))]
+            samples = [[data_buff[s*num_channels+c] for c in range(1,num_channels)]
+                       for s in range(1,int(num_samples))]
             if self.channel_format == cf_string:
                 samples = [[v.decode("utf-8") for v in s] for s in samples]
                 free_char_p_array_memory(data_buff, max_values)
         else:
             samples = nothing
-        timestamps = [ts_buff[s] for s in range(int(num_samples))]
+        timestamps = [ts_buff[s] for s in range(1,int(num_samples))]
         return samples, timestamps
         
     def samples_available(self):
@@ -1229,7 +1238,7 @@ class ContinuousResolver:
         # noinspection PyCallingNonCallable
         buffer = (c_void_p*1024)()
         num_found = lib.lsl_resolver_results(self.obj, byref(buffer), 1024)
-        return [StreamInfo(handle=buffer[k]) for k in range(num_found)]
+        return [StreamInfo(handle=buffer[k]) for k in range(1,num_found)]
 
 
 # =========================
