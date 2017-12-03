@@ -747,8 +747,9 @@ end
 function free_char_p_array_memory(char_p_array,num_elements)
     pointers = Ptr{Void}.(char_p_array) # the dot syntax for vectorizing functions
     for p in range(1,num_elements)
-        if pointers[p] is not nothing:  # only free initialized pointers
-            lib.lsl_destroy_string(pointers[p])
+        if pointers[p] != nothing:  # only free initialized pointers
+            # lib.lsl_destroy_string(pointers[p])
+            ccall((:lsl_destroy_string, LSLBIN), Void, (Ptr{Void},), pointers[p] )
         end
     end
 end
@@ -757,275 +758,302 @@ end
 # === Stream Inlet ===
 # ====================
     
-class StreamInlet:
-    """A stream inlet.
+struct StreamInlet
+    #=A stream inlet.
 
     Inlets are used to receive streaming data (and meta-data) from the lab 
     network.
 
-    """
+    =#
+    obj            # c_void_p(self.obj)
+    channel_format # info.channel_format()
+    channel_count  # info.channel_count()
+    do_pull_sample # fmt2pull_sample[self.channel_format]
+    do_pull_chunk  # fmt2pull_chunk[self.channel_format]
+    value_type     # fmt2type[self.channel_format]
+    sample_type    # self.value_type*self.channel_count
+    sample         # self.sample_type()
+    buffers        # {}
+end
     
-    def __init__(self, info, max_buflen=360, max_chunklen=0, recover=True, processing_flags=0):
-        """Construct a new stream inlet from a resolved stream description.
-        
-        Keyword arguments:
-        description -- A resolved stream description object (as coming from one
-                of the resolver functions). Note: the stream_inlet may also be
-                constructed with a fully-specified stream_info, if the desired 
-                channel format and count is already known up-front, but this is 
-                strongly discouraged and should only ever be done if there is 
-                no time to resolve the stream up-front (e.g., due to 
-                limitations in the client program).
-        max_buflen -- Optionally the maximum amount of data to buffer (in   
-                      seconds if there is a nominal sampling rate, otherwise 
-                      x100 in samples). Recording applications want to use a 
-                      fairly large buffer size here, while real-time 
-                      applications would only buffer as much as they need to 
-                      perform their next calculation. (default 360)
-        max_chunklen -- Optionally the maximum size, in samples, at which 
-                        chunks are transmitted (the default corresponds to the 
-                        chunk sizes used by the sender). Recording programs  
-                        can use a generous size here (leaving it to the network 
-                        how to pack things), while real-time applications may 
-                        want a finer (perhaps 1-sample) granularity. If left 
-                        unspecified (=0), the sender determines the chunk 
-                        granularity. (default 0)
-        recover -- Try to silently recover lost streams that are recoverable 
-                   (=those that that have a source_id set). In all other cases 
-                   (recover is False or the stream is not recoverable) 
-                   functions may throw a lost_error if the stream"s source is 
-                   lost (e.g., due to an app or computer crash). (default True)
+function StreamInlet(info, max_buflen=360, max_chunklen=0, recover=True, processing_flags=0)
+    #=Construct a new stream inlet from a resolved stream description.
+    
+    Keyword arguments:
+    description -- A resolved stream description object (as coming from one
+            of the resolver functions). Note: the stream_inlet may also be
+            constructed with a fully-specified stream_info, if the desired 
+            channel format and count is already known up-front, but this is 
+            strongly discouraged and should only ever be done if there is 
+            no time to resolve the stream up-front (e.g., due to 
+            limitations in the client program).
+    max_buflen -- Optionally the maximum amount of data to buffer (in   
+                    seconds if there is a nominal sampling rate, otherwise 
+                    x100 in samples). Recording applications want to use a 
+                    fairly large buffer size here, while real-time 
+                    applications would only buffer as much as they need to 
+                    perform their next calculation. (default 360)
+    max_chunklen -- Optionally the maximum size, in samples, at which 
+                    chunks are transmitted (the default corresponds to the 
+                    chunk sizes used by the sender). Recording programs  
+                    can use a generous size here (leaving it to the network 
+                    how to pack things), while real-time applications may 
+                    want a finer (perhaps 1-sample) granularity. If left 
+                    unspecified (=0), the sender determines the chunk 
+                    granularity. (default 0)
+    recover -- Try to silently recover lost streams that are recoverable 
+                (=those that that have a source_id set). In all other cases 
+                (recover is False or the stream is not recoverable) 
+                functions may throw a lost_error if the stream"s source is 
+                lost (e.g., due to an app or computer crash). (default True)
 
-        """
-        if typeof(info) is list:
-            raise TypeError("description needs to be of type StreamInfo, "
-                            "got a list.")
-        self.obj = lib.lsl_create_inlet(info.obj, max_buflen, max_chunklen,
-                                        recover)
-        self.obj = c_void_p(self.obj)
-        if not self.obj: 
-            raise RuntimeError("could not create stream inlet.")
-        if processing_flags > 0:
-            handle_error(lib.lsl_set_postprocessing(self.obj, processing_flags))
-        self.channel_format = info.channel_format()
-        self.channel_count = info.channel_count()
-        self.do_pull_sample = fmt2pull_sample[self.channel_format]
-        self.do_pull_chunk = fmt2pull_chunk[self.channel_format]
-        self.value_type = fmt2type[self.channel_format]
-        self.sample_type = self.value_type*self.channel_count
-        self.sample = self.sample_type()
-        self.buffers = {}
+    =#
+    if typeof(info) <: AbstractArray:
+        throw(ErrorException(
+            "description needs to be of type StreamInfo, got a list.")
+    self.obj = lib.lsl_create_inlet(info.obj, max_buflen, max_chunklen,
+                                    recover)
+    self.obj = c_void_p(self.obj)
+    if not self.obj: 
+        raise RuntimeError("could not create stream inlet.")
+    if processing_flags > 0:
+        handle_error(lib.lsl_set_postprocessing(self.obj, processing_flags))
+    self.channel_format = info.channel_format()
+    self.channel_count = info.channel_count()
+    self.do_pull_sample = fmt2pull_sample[self.channel_format]
+    self.do_pull_chunk = fmt2pull_chunk[self.channel_format]
+    self.value_type = fmt2type[self.channel_format]
+    self.sample_type = self.value_type*self.channel_count
+    self.sample = self.sample_type()
+    self.buffers = {}
+    self
+end
 
-    def __del__(self):
-        """Destructor. The inlet will automatically disconnect if destroyed."""
-        # noinspection PyBroadException
-        try:
-            lib.lsl_destroy_inlet(self.obj)
-        except:
-            pass
-        
-    def info(self, timeout=FOREVER):
-        """Retrieve the complete information of the given stream.
+function __del__(self::StreamInlet)
+    #=Destructor. The inlet will automatically disconnect if destroyed.=#
+    # noinspection PyBroadException
+    try
+        lib.lsl_destroy_inlet(self.obj)
+    end
+end
+    
+function info(self, timeout=FOREVER)
+    #=Retrieve the complete information of the given stream.
 
-        This includes the extended description. Can be invoked at any time of
-        the stream"s lifetime.
-        
-        Keyword arguments:
-        timeout -- Timeout of the operation. (default FOREVER)
-        
-        Throws a TimeoutError (if the timeout expires), or LostError (if the 
-        stream source has been lost).
+    This includes the extended description. Can be invoked at any time of
+    the stream"s lifetime.
+    
+    Keyword arguments:
+    timeout -- Timeout of the operation. (default FOREVER)
+    
+    Throws a TimeoutError (if the timeout expires), or LostError (if the 
+    stream source has been lost).
 
-        """
-        errcode = c_int()
-        result = lib.lsl_get_fullinfo(self.obj, c_double(timeout),
-                                      byref(errcode))
-        handle_error(errcode)
-        return StreamInfo(handle=result)
+    =#
+    errcode = c_int()
+    result = lib.lsl_get_fullinfo(self.obj, c_double(timeout),
+                                    byref(errcode))
+    handle_error(errcode)
+    return StreamInfo(handle=result)
+end
 
-    def open_stream(self, timeout=FOREVER):
-        """Subscribe to the data stream.
+function open_stream(self, timeout=FOREVER)
+    #=Subscribe to the data stream.
 
-        All samples pushed in at the other end from this moment onwards will be 
-        queued and eventually be delivered in response to pull_sample() or 
-        pull_chunk() calls. Pulling a sample without some preceding open_stream 
-        is permitted (the stream will then be opened implicitly).
-        
-        Keyword arguments:
-        timeout -- Optional timeout of the operation (default FOREVER).
-        
-        Throws a TimeoutError (if the timeout expires), or LostError (if the 
-        stream source has been lost).
+    All samples pushed in at the other end from this moment onwards will be 
+    queued and eventually be delivered in response to pull_sample() or 
+    pull_chunk() calls. Pulling a sample without some preceding open_stream 
+    is permitted (the stream will then be opened implicitly).
+    
+    Keyword arguments:
+    timeout -- Optional timeout of the operation (default FOREVER).
+    
+    Throws a TimeoutError (if the timeout expires), or LostError (if the 
+    stream source has been lost).
 
-        """
-        errcode = c_int()
-        lib.lsl_open_stream(self.obj, c_double(timeout), byref(errcode))
-        handle_error(errcode)
-        
-    def close_stream(self):
-        """Drop the current data stream.
+    =#
+    errcode = c_int()
+    lib.lsl_open_stream(self.obj, c_double(timeout), byref(errcode))
+    handle_error(errcode)
+end
+    
+function close_stream(self)
+    #=Drop the current data stream.
 
-        All samples that are still buffered or in flight will be dropped and 
-        transmission and buffering of data for this inlet will be stopped. If 
-        an application stops being interested in data from a source 
-        (temporarily or not) but keeps the outlet alive, it should call 
-        lsl_close_stream() to not waste unnecessary system and network 
-        resources.
+    All samples that are still buffered or in flight will be dropped and 
+    transmission and buffering of data for this inlet will be stopped. If 
+    an application stops being interested in data from a source 
+    (temporarily or not) but keeps the outlet alive, it should call 
+    lsl_close_stream() to not waste unnecessary system and network 
+    resources.
 
-        """
-        lib.lsl_close_stream(self.obj)
+    =#
+    lib.lsl_close_stream(self.obj)
+end
 
-    def time_correction(self, timeout=FOREVER):
-        """Retrieve an estimated time correction offset for the given stream.
+function time_correction(self, timeout=FOREVER)
+    #=Retrieve an estimated time correction offset for the given stream.
 
-        The first call to this function takes several miliseconds until a 
-        reliable first estimate is obtained. Subsequent calls are instantaneous 
-        (and rely on periodic background updates). The precision of these 
-        estimates should be below 1 ms (empirically within +/-0.2 ms).
-        
-        Keyword arguments: 
-        timeout -- Timeout to acquire the first time-correction estimate 
-                   (default FOREVER).
-                   
-        Returns the current time correction estimate. This is the number that 
-        needs to be added to a time stamp that was remotely generated via 
-        local_clock() to map it into the local clock domain of this 
-        machine.
-
-        Throws a TimeoutError (if the timeout expires), or LostError (if the 
-        stream source has been lost).
-
-        """
-        errcode = c_int()
-        result = lib.lsl_time_correction(self.obj, c_double(timeout),
-                                         byref(errcode))
-        handle_error(errcode)
-        return result
-        
-    def pull_sample(self, timeout=FOREVER, sample=nothing):
-        """Pull a sample from the inlet and return it.
-        
-        Keyword arguments:
-        timeout -- The timeout for this operation, if any. (default FOREVER)
-                   If this is passed as 0.0, then the function returns only a 
-                   sample if one is buffered for immediate pickup.
-        
-        Returns a tuple (sample,timestamp) where sample is a list of channel 
-        values and timestamp is the capture time of the sample on the remote 
-        machine, or (nothing,nothing) if no new sample was available. To remap this 
-        time stamp to the local clock, add the value returned by 
-        .time_correction() to it. 
-        
-        Throws a LostError if the stream source has been lost. Note that, if 
-        the timeout expires, no TimeoutError is thrown (because this case is 
-        not considered an error).
-
-        """
-        
-        # support for the legacy API
-        if typeof(timeout) is list:
-            assign_to = timeout
-            timeout = sample if typeof(sample) is float else 0.0
-        else:
-            assign_to = nothing
+    The first call to this function takes several miliseconds until a 
+    reliable first estimate is obtained. Subsequent calls are instantaneous 
+    (and rely on periodic background updates). The precision of these 
+    estimates should be below 1 ms (empirically within +/-0.2 ms).
+    
+    Keyword arguments: 
+    timeout -- Timeout to acquire the first time-correction estimate 
+                (default FOREVER).
                 
-        errcode = c_int()
-        timestamp = self.do_pull_sample(self.obj, byref(self.sample),
-                                        self.channel_count, c_double(timeout),
+    Returns the current time correction estimate. This is the number that 
+    needs to be added to a time stamp that was remotely generated via 
+    local_clock() to map it into the local clock domain of this 
+    machine.
+
+    Throws a TimeoutError (if the timeout expires), or LostError (if the 
+    stream source has been lost).
+
+    =#
+    errcode = c_int()
+    result = lib.lsl_time_correction(self.obj, c_double(timeout),
                                         byref(errcode))
-        handle_error(errcode)
-        if timestamp:
-            sample = [v for v in self.sample]
-            if self.channel_format == cf_string:
-                sample = [v.decode("utf-8") for v in sample]
-            if assign_to is not nothing:
-                assign_to[:] = sample
-            return sample, timestamp
-        else:
-            return nothing, nothing
-        
-    def pull_chunk(self, timeout=0.0, max_samples=1024, dest_obj=nothing):
-        """Pull a chunk of samples from the inlet.
-        
-        Keyword arguments:
-        timeout -- The timeout of the operation; if passed as 0.0, then only 
-                   samples available for immediate pickup will be returned. 
-                   (default 0.0)
-        max_samples -- Maximum number of samples to return. (default 
-                       1024)
-        dest_obj -- A Python object that supports the buffer interface.
-                    If this is provided then the dest_obj will be updated in place
-                    and the samples list returned by this method will be empty.
-                    It is up to the caller to trim the buffer to the appropriate
-                    number of samples.
-                    A numpy buffer must be order="C"
-                    (default nothing)
-                       
-        Returns a tuple (samples,timestamps) where samples is a list of samples 
-        (each itself a list of values), and timestamps is a list of time-stamps.
+    handle_error(errcode)
+    return result
+end
+    
+function pull_sample(self, timeout=FOREVER, sample=nothing)
+    #=Pull a sample from the inlet and return it.
+    
+    Keyword arguments:
+    timeout -- The timeout for this operation, if any. (default FOREVER)
+                If this is passed as 0.0, then the function returns only a 
+                sample if one is buffered for immediate pickup.
+    
+    Returns a tuple (sample,timestamp) where sample is a list of channel 
+    values and timestamp is the capture time of the sample on the remote 
+    machine, or (nothing,nothing) if no new sample was available. To remap this 
+    time stamp to the local clock, add the value returned by 
+    .time_correction() to it. 
+    
+    Throws a LostError if the stream source has been lost. Note that, if 
+    the timeout expires, no TimeoutError is thrown (because this case is 
+    not considered an error).
 
-        Throws a LostError if the stream source has been lost.
+    =#
+    
+    # support for the legacy API
+    if typeof(timeout) is list:
+        assign_to = timeout
+        timeout = sample if typeof(sample) is float else 0.0
+    else:
+        assign_to = nothing
+            
+    errcode = c_int()
+    timestamp = self.do_pull_sample(self.obj, byref(self.sample),
+                                    self.channel_count, c_double(timeout),
+                                    byref(errcode))
+    handle_error(errcode)
+    if timestamp:
+        sample = [v for v in self.sample]
+        if self.channel_format == cf_string:
+            sample = [v.decode("utf-8") for v in sample]
+        end
+        if assign_to is not nothing:
+            assign_to[:] = sample
+        end
+        return sample, timestamp
+    else
+        return nothing, nothing
+    end
+end
+    
+function pull_chunk(self::StreamInlet, timeout=0.0, max_samples=1024, dest_obj=nothing)
+    #=Pull a chunk of samples from the inlet.
+    
+    Keyword arguments:
+    timeout -- The timeout of the operation; if passed as 0.0, then only 
+                samples available for immediate pickup will be returned. 
+                (default 0.0)
+    max_samples -- Maximum number of samples to return. (default 
+                    1024)
+    dest_obj -- A Python object that supports the buffer interface.
+                If this is provided then the dest_obj will be updated in place
+                and the samples list returned by this method will be empty.
+                It is up to the caller to trim the buffer to the appropriate
+                number of samples.
+                A numpy buffer must be order="C"
+                (default nothing)
+                    
+    Returns a tuple (samples,timestamps) where samples is a list of samples 
+    (each itself a list of values), and timestamps is a list of time-stamps.
 
-        """
-        # look up a pre-allocated buffer of appropriate length        
-        num_channels = self.channel_count
-        max_values = max_samples*num_channels
+    Throws a LostError if the stream source has been lost.
 
-        if max_samples not in self.buffers:
-            # noinspection PyCallingNonCallable
-            self.buffers[max_samples] = ((self.value_type*max_values)(),
-                                         (c_double*max_samples)())
-        if dest_obj is not nothing:
-            data_buff = (self.value_type * max_values).from_buffer(dest_obj)
-        else:
-            data_buff = self.buffers[max_samples][0]
-        ts_buff = self.buffers[max_samples][1]
+    =#
+    # look up a pre-allocated buffer of appropriate length        
+    num_channels = self.channel_count
+    max_values = max_samples*num_channels
 
-        # read data into it
-        errcode = c_int()
+    if max_samples not in self.buffers:
         # noinspection PyCallingNonCallable
-        num_elements = self.do_pull_chunk(self.obj, byref(data_buff),
-                                          byref(ts_buff), max_values,
-                                          max_samples, c_double(timeout),
-                                          byref(errcode))
-        handle_error(errcode)
-        # return results (note: could offer a more efficient format in the 
-        # future, e.g., a numpy array)
-        num_samples = num_elements/num_channels
-        if dest_obj is nothing:
-            samples = [[data_buff[s*num_channels+c] for c in range(1,num_channels)]
-                       for s in range(1,int(num_samples))]
-            if self.channel_format == cf_string:
-                samples = [[v.decode("utf-8") for v in s] for s in samples]
-                free_char_p_array_memory(data_buff, max_values)
-        else:
-            samples = nothing
-        timestamps = [ts_buff[s] for s in range(1,int(num_samples))]
-        return samples, timestamps
-        
-    def samples_available(self):
-        """Query whether samples are currently available for immediate pickup.
+        self.buffers[max_samples] = ((self.value_type*max_values)(),
+                                        (c_double*max_samples)())
+    end
+    if dest_obj is not nothing:
+        data_buff = (self.value_type * max_values).from_buffer(dest_obj)
+    else:
+        data_buff = self.buffers[max_samples][0]
+    end
+    ts_buff = self.buffers[max_samples][1]
 
-        Note that it is not a good idea to use samples_available() to determine 
-        whether a pull_*() call would block: to be sure, set the pull timeout 
-        to 0.0 or an acceptably low value. If the underlying implementation 
-        supports it, the value will be the number of samples available 
-        (otherwise it will be 1 or 0).
+    # read data into it
+    errcode = c_int()
+    # noinspection PyCallingNonCallable
+    num_elements = self.do_pull_chunk(self.obj, byref(data_buff),
+                                        byref(ts_buff), max_values,
+                                        max_samples, c_double(timeout),
+                                        byref(errcode))
+    handle_error(errcode)
+    # return results (note: could offer a more efficient format in the 
+    # future, e.g., a numpy array)
+    num_samples = num_elements/num_channels
+    if dest_obj is nothing:
+        samples = [[data_buff[s*num_channels+c] for c in range(1,num_channels)]
+                    for s in range(1,int(num_samples))]
+        if self.channel_format == cf_string:
+            samples = [[v.decode("utf-8") for v in s] for s in samples]
+            free_char_p_array_memory(data_buff, max_values)
+        end
+    else:
+        samples = nothing
+    end
 
-        """
-        return lib.lsl_samples_available(self.obj)
-        
-    def was_clock_reset(self):
-        """Query whether the clock was potentially reset since the last call.
+    timestamps = [ts_buff[s] for s in range(1,int(num_samples))]
+    return samples, timestamps
+end
+    
+function samples_available(self::StreamInlet)
+    #=Query whether samples are currently available for immediate pickup.
 
-        This is rarely-used function is only needed for applications that
-        combine multiple time_correction values to estimate precise clock
-        drift if they should tolerate cases where the source machine was
-        hot-swapped or restarted.
+    Note that it is not a good idea to use samples_available() to determine 
+    whether a pull_*() call would block: to be sure, set the pull timeout 
+    to 0.0 or an acceptably low value. If the underlying implementation 
+    supports it, the value will be the number of samples available 
+    (otherwise it will be 1 or 0).
 
-        """
-        return bool(lib.lsl_was_clock_reset(self.obj))
+    =#
+    return lib.lsl_samples_available(self.obj)
+end
+    
+function was_clock_reset(self::StreamInlet)
+    #=Query whether the clock was potentially reset since the last call.
 
+    This is rarely-used function is only needed for applications that
+    combine multiple time_correction values to estimate precise clock
+    drift if they should tolerate cases where the source machine was
+    hot-swapped or restarted.
+
+    =#
+    return bool(lib.lsl_was_clock_reset(self.obj))
+end
 
 # ===================
 # === XML Element ===
