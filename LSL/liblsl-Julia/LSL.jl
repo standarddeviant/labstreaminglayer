@@ -495,16 +495,22 @@ function StreamOutlet(info, chunk_size=0, max_buffered=360):
     =#
     obj = Ptr{Void}(lib.lsl_create_outlet(info.obj, chunk_size, max_buffered))
     if obj == C_NULL
-        throw(ErrorException("could not create stream outlet."))
+        throw(ErrorException("could not create stream outlet, obj==C_NULL"))
     end
-    self = StreamOutlet(
+    channel_count  = info.channel_count()
+    channel_format = info.channel_format()
+    do_push_sample = fmt2push_sample[self.channel_format]
+    do_push_chunk  = fmt2push_chunk[self.channel_format]
+    value_type     = fmt2type[self.channel_format]
+    sample_type    = fmt2type[self.channel_format] * channel_count # DRCFIX, can't use ctypes trick...
+    StreamOutlet(
         obj, 
-        info.channel_format(), # channel_format
-        info.channel_count(), # channel_count
-        fmt2push_sample[self.channel_format], # do_push_sample
-        fmt2push_chunk[self.channel_format], # do_push_chunk
-        fmt2type[self.channel_format], # value_type
-        fmt2type[self.channel_format] * info.channel_count() # sample_type
+        channel_format,
+        channel_count,
+        do_push_sample,
+        do_push_chunk,
+        value_type,
+        sample_type
     )
 end
                 
@@ -811,22 +817,40 @@ function StreamInlet(info, max_buflen=360, max_chunklen=0, recover=True, process
     if typeof(info) <: AbstractArray:
         throw(ErrorException(
             "description needs to be of type StreamInfo, got a list.")
-    self.obj = lib.lsl_create_inlet(info.obj, max_buflen, max_chunklen,
-                                    recover)
-    self.obj = c_void_p(self.obj)
-    if not self.obj: 
-        raise RuntimeError("could not create stream inlet.")
-    if processing_flags > 0:
-        handle_error(lib.lsl_set_postprocessing(self.obj, processing_flags))
-    self.channel_format = info.channel_format()
-    self.channel_count = info.channel_count()
-    self.do_pull_sample = fmt2pull_sample[self.channel_format]
-    self.do_pull_chunk = fmt2pull_chunk[self.channel_format]
-    self.value_type = fmt2type[self.channel_format]
-    self.sample_type = self.value_type*self.channel_count
-    self.sample = self.sample_type()
-    self.buffers = {}
-    self
+    end
+    obj = ccall((:lsl_create_inlet, LSLBIN),
+        Ptr{Void},
+        (Ptr{Void}, Cint, Cint, Cint)
+        info.obj, Cint(max_buflen), Cint(max_chunklen), Cint(recover))
+    obj = Ptr{Void}(obj)
+
+    if obj == C_NULL
+        throw(ErrorException("could not create stream inlet."))
+    end
+    if processing_flags > 0
+        # handle_error(lib.lsl_set_postprocessing(self.obj, processing_flags))
+        handle_error(ccall((:lsl_set_postprocessing, LSLBIN), 
+            Cint, (Cint,), Cint(processing_flags)))
+    end
+    
+    channel_format = info.channel_format()
+    channel_count  = info.channel_count()
+    do_pull_sample = fmt2pull_sample[channel_format]
+    do_pull_chunk  = fmt2pull_chunk[channel_format]
+    value_type     = fmt2type[channel_format]
+    sample_type    = value_type * channel_count # DRCFIX, we can't use ctypes trick of multiplying basic type...
+    sample         = sample_type()
+    StreamInfo(
+        obj,
+        info.channel_format(),                # channel_format
+        info.channel_count(),                 # channel_count
+        fmt2pull_sample[info.channel_format], # do_pull_sample
+        fmt2pull_chunk[info.channel_format],  # do_pull_chunk
+        fmt2type[self.channel_format],        # value_type
+        self.value_type*self.channel_count,   # sample_type
+        self.sample_type(),                   # sample
+        buffers = {}
+    )
 end
 
 function __del__(self::StreamInlet)
