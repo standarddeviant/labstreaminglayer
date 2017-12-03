@@ -5,7 +5,8 @@
 # Dave Crist 2017
 module LSL
 
-const LSLBIN = "C:\\Users\\dc71219\\src\\liblsl\\bin\\liblsl64"
+# const LSLBIN = ""
+# DRCFIX add a clean "setter" for a module-global-const variable... this seems counter-intuitive... do we need const for LSLBIN???
 
 # START JULIA BOILERPLATE CONFIG
 # FIXME put using XXX here
@@ -950,8 +951,14 @@ function open_stream(self::StreamInlet, timeout=FOREVER)
     stream source has been lost).
 
     =#
-    errcode = c_int()
-    lib.lsl_open_stream(self.obj, c_double(timeout), byref(errcode))
+    errcode = Cint(0) # c_int()
+    # lib.lsl_open_stream(self.obj, c_double(timeout), byref(errcode))
+     # DRCFIX should all "self.obj" in this file be replaced with "Ptr{Void}(self.obj)" ???
+    ccall((:lsl_open_stream, LSLBIN),
+        Void,
+        (Ptr{Void}, Cdouble, Ptr{Cint}),
+        self.obj, Cdouble(timeout), pointer(errcode)
+    )
     handle_error(errcode)
 end
     
@@ -966,7 +973,8 @@ function close_stream(self::StreamInlet)
     resources.
 
     =#
-    lib.lsl_close_stream(self.obj)
+    # lib.lsl_close_stream(self.obj)
+    ccall((:lsl_close_stream, LSLBIN), Void, (Ptr{Void},) self.obj)
 end
 
 function time_correction(self::StreamInlet, timeout=FOREVER)
@@ -990,11 +998,16 @@ function time_correction(self::StreamInlet, timeout=FOREVER)
     stream source has been lost).
 
     =#
-    errcode = c_int()
-    result = lib.lsl_time_correction(self.obj, c_double(timeout),
-                                        byref(errcode))
+    errcode = Cint(0) # c_int()
+    # result = lib.lsl_time_correction(self.obj, c_double(timeout),
+    #                                     byref(errcode))
+    result = ccall((:lsl_time_correction, LSLBIN),
+        Cdouble,
+        (Ptr{Void}, Cdouble, Ptr{Cint}),
+        self.obj, Cdouble(timeout), pointer(errcode)
+    )
     handle_error(errcode)
-    return result
+    result
 end
     
 function pull_sample(self::StreamInlet, timeout=FOREVER, sample=nothing)
