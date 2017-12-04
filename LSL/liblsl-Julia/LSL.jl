@@ -3,7 +3,7 @@
 # changes will be implemented.
 
 # Dave Crist 2017
-module LSL
+# module LSL
 
 # START JULIA BOILERPLATE CONFIG
 # FIXME put using XXX here
@@ -28,8 +28,8 @@ end
 function ptr2str(inp,funcname=nothing)
     tmpptr = Ptr{Cchar}(inp)
     if tmpptr == C_NULL
-        error("Unable to convert ptr to str (ptr==C_NULL)" * 
-            "$(funcname!=nothing?" from "*funcname:"")"))
+        error("Unable to convert ptr to str (ptr==C_NULL)" *
+            "$(funcname!=nothing?" from "*funcname:"")")
     end
     unsafe_string(tmpptr)
 end
@@ -69,16 +69,18 @@ pylsl has been tested with Python 2.7 and 3.4.
 #            "lost_error", "vectorf", "vectord", "vectorl", "vectori",
 #            "vectors", "vectorc", "vectorstr", "resolve_stream"]
 
-export IRREGULAR_RATE, DEDUCED_TIMESTAMP, FOREVER, cf_float32,     \
-       cf_double64, cf_string, cf_int32, cf_int16, cf_int8,       \
-       cf_int64, cf_undefined, protocol_version, library_version, \
-       local_clock, StreamInfo, StreamOutlet, resolve_streams,    \
-       resolve_byprop, resolve_bypred, StreamInlet, XMLElement,   \
-       ContinuousResolver, TimeoutError, LostError,               \
-       InvalidArgumentError, InternalError, stream_info,          \
-       stream_outlet, stream_inlet, xml_element, timeout_error,   \
-       lost_error, vectorf, vectord, vectorl, vectori,            \
-       vectors, vectorc, vectorstr, resolve_stream
+# DRCFIX - add export back in for actual module
+# export IRREGULAR_RATE, DEDUCED_TIMESTAMP, FOREVER, cf_float32,     \
+#        cf_double64, cf_string, cf_int32, cf_int16, cf_int8,       \
+#        cf_int64, cf_undefined, protocol_version, library_version, \
+#        local_clock, StreamInfo, StreamOutlet, resolve_streams,    \
+#        resolve_byprop, resolve_bypred, StreamInlet, XMLElement,   \
+#        ContinuousResolver, TimeoutError, LostError,               \
+#        InvalidArgumentError, InternalError, stream_info,          \
+#        stream_outlet, stream_inlet, xml_element, timeout_error,   \
+#        lost_error, vectorf, vectord, vectorl, vectori,            \
+#        vectors, vectorc, vectorstr, resolve_stream
+
 
 
         #    struct MyType
@@ -141,6 +143,48 @@ const proc_dejitter = 2
 const proc_monotonize = 4
 const proc_threadsafe = 8
 const proc_ALL = proc_none | proc_clocksync | proc_dejitter | proc_monotonize | proc_threadsafe
+
+
+
+
+
+# DRCNOTE, the below types like fmt2type used to be at bottom of file, 
+# DRCNOTE, but for Julia, they logically make more sense at the top of the file
+# set up some type maps
+string2fmt = Dict("float32" => cf_float32, "double64" => cf_double64,
+                  "string"  => cf_string,  "int32"    => cf_int32, 
+                  "int16"   => cf_int16,   "int8"     => cf_int8, 
+                  "int64"   => cf_int64)
+fmt2string = ["undefined", "float32", "double64", "string", "int32", "int16",
+    "int8", "int64"]
+fmt2type = [[], Cfloat, Cdouble, Cstring, Cint, Cshort, Cchar, Clonglong]
+# fmt2push_sample = [[], lib.lsl_push_sample_ftp, lib.lsl_push_sample_dtp,
+#                    lib.lsl_push_sample_strtp, lib.lsl_push_sample_itp,
+#                    lib.lsl_push_sample_stp, lib.lsl_push_sample_ctp, []]
+# fmt2pull_sample = [[], lib.lsl_pull_sample_f, lib.lsl_pull_sample_d,
+#                    lib.lsl_pull_sample_str, lib.lsl_pull_sample_i,
+#                    lib.lsl_pull_sample_s, lib.lsl_pull_sample_c, []]
+# DRCNOTE , switching from Python functions to Julia Symbols for use with ccall
+fmt2push_sample = [[], :lsl_push_sample_ftp, :lsl_push_sample_dtp,
+    :lsl_push_sample_strtp, :lsl_push_sample_itp,
+    :lsl_push_sample_stp, :lsl_push_sample_ctp, []]
+fmt2pull_sample = [[], :lsl_pull_sample_f, :lsl_pull_sample_d,
+    :lsl_pull_sample_str, :lsl_pull_sample_i,
+    :lsl_pull_sample_s, :lsl_pull_sample_c, []]
+# noinspection PyBroadException
+try
+fmt2push_chunk = [[], :lsl_push_chunk_ftp, :lsl_push_chunk_dtp,
+    :lsl_push_chunk_strtp, :lsl_push_chunk_itp,
+    :lsl_push_chunk_stp, :lsl_push_chunk_ctp, []]
+fmt2pull_chunk = [[], :lsl_pull_chunk_f, :lsl_pull_chunk_d,
+    :lsl_pull_chunk_str, :lsl_pull_chunk_i,
+    :lsl_pull_chunk_s, :lsl_pull_chunk_c, []]
+catch
+    # if not available
+    fmt2push_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
+    fmt2pull_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
+end
+
 
 
 # ==========================================================
@@ -252,10 +296,10 @@ function StreamInfo(name="untitled", type_="", channel_count=1,
 
     =#
     if handle != nothing
-        self.obj = Ptr{Void}(handle)
+        obj = Ptr{Void}(handle)
     else
         # DRCFIX DOES str2fmt NEED TO BE ABOVE???
-        if isinstance(channel_format, str):
+        if isa(channel_format, AbstractString)
             channel_format = string2fmt[channel_format]
         end
 
@@ -265,20 +309,22 @@ function StreamInfo(name="untitled", type_="", channel_count=1,
         #                                         c_double(nominal_srate),
         #                                         channel_format,
         #                                         c_char_p(str.encode(source_id)))
-        outp = StreamInfo(ccall((:lsl_create_streaminfo, LSLBIN), 
+        obj = StreamInfo(ccall((:lsl_create_streaminfo, LSLBIN), 
             Ptr{Void}, 
             (Cstring, Cstring, Cint, Cdouble, Cint, Cstring), 
             name, type_, Cint(channel_count), Cdouble(nominal_srate), Cint(channel_count), source_id
         ))
 
-        self.obj = c_void_p(self.obj)
-        if not self.obj:
-            raise RuntimeError("could not create stream description "
-                                "object.")
+        obj = Ptr{Void}(self.obj)
+        if obj == C_NULL
+            error("could not create stream description object.") #raise RuntimeError
         end
     end
+    StreamInfo(obj)
 end # function StreamInfo
-    
+
+# DRCFIX - convert to finalizer to free memory, read up on Julia best practice for other C-wrappers
+# DRCFIX - look @ https://discourse.julialang.org/t/properly-using-finalizer-ccall-cconvert-and-unsafe-convert/6183/6
 function del(self::StreamInfo)
     #= Destroy a previously created StreamInfo object. =#
     # noinspection PyBroadException
@@ -514,7 +560,7 @@ mutable struct StreamOutlet
     sample_type    # = self.value_type*self.channel_count     # 
 end
     
-function StreamOutlet(info, chunk_size=0, max_buffered=360):
+function StreamOutlet(info, chunk_size=0, max_buffered=360)
     #=Establish a new stream outlet. This makes the stream discoverable.
     
     Keyword arguments:
@@ -567,10 +613,11 @@ function del(self::StreamOutlet)
     # noinspection PyBroadException
     try
         # lib.lsl_destroy_outlet(self.obj)
+        # const tmpptr = Ptr{Void}(self.obj)
         ccall((:lsl_destroy_outlet, LSLBIN), Void, (Ptr{Void},), self.obj)
     end
 end
-        
+
 function push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
     #=Push a sample into the outlet.
 
@@ -588,16 +635,20 @@ function push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
                     (default True)
 
     =#
-    if length(x) == self.channel_count:
+    if length(x) == self.channel_count
         # DRCFIX - is this needed for julia????
         # if self.channel_format == cf_string 
         #     x = [v.encode("utf-8") for v in x]
         # end
-        handle_error(ccall( 
-            (self.do_push_sample, LSLBIN),
+        tmpx = Vector{self.value_type}(x)
+        tmpts = Cdouble(timestamp)
+        tmppt = Cint(pushthrough)
+        # self.obj, tmpx, tmpts, tmppt
+        handle_error(ccall((self.do_push_sample, LSLBIN),
             Cint, # output type # DRCFIX double check this
             (Ptr{Void}, Ptr{self.sample_type}, Cdouble, Cint), # input types
-            self.obj, Vector{self.sample_type}(x), Cdouble(timestamp), Cint(pushthrough)
+            self.obj, tmpvec, Cdouble(timestamp), Cint(pushthrough)
+
         ))
     else
         throw(ErrorException(
@@ -824,7 +875,7 @@ end
 # === Stream Inlet ===
 # ====================
     
-struct StreamInlet
+mutable struct StreamInlet
     #=A stream inlet.
 
     Inlets are used to receive streaming data (and meta-data) from the lab 
@@ -1204,7 +1255,7 @@ end
 # === XML Element ===
 # ===================
 
-struct XMLElement
+mutable struct XMLElement
     #=A lightweight XML element tree modeling the .desc() field of StreamInfo.
 
     Has a name and can have multiple named children or have text content as 
@@ -1429,87 +1480,113 @@ end
 # === ContinuousResolver ===
 # ==========================
 
-class ContinuousResolver:
-    """A convenience class resolving streams continuously in the background.
+mutable struct ContinuousResolver
+    #=A convenience class resolving streams continuously in the background.
 
     This object can be queried at any time for the set of streams that are
     currently visible on the network.
 
-    """
-    
-    def __init__(self, prop=nothing, value=nothing, pred=nothing, forget_after=5.0):
-        """Construct a new continuous_resolver.
+    =#
+    obj
+end
+# DRCFIX - write Base.show(io::IO, m::MyType) function
+# function Base.show(io::IO, m::MyType)
+#     print(io, "$(typeof(m))($(join([x?'1':'0' for x in (rand(5).>0.5)])))")
+# end
 
-        Keyword arguments:
-        forget_after -- When a stream is no longer visible on the network       
-                        (e.g., because it was shut down), this is the time in 
-                        seconds after which it is no longer reported by the 
-                        resolver.
+function ContinuousResolver(prop=nothing, value=nothing, pred=nothing, forget_after=5.0)
+    #=Construct a new continuous_resolver.
 
-        """
-        if pred is not nothing:
-            if prop is not nothing or value is not nothing:
-                raise ValueError("you can only either pass the prop/value "
-                                 "argument or the pred argument, but not "
-                                 "both.")
-            self.obj = lib.lsl_create_continuous_resolver_bypred(str.encode(pred),
-                                                                 c_double(forget_after))
-        elif prop is not nothing and value is not nothing:
-            self.obj = lib.lsl_create_continuous_resolver_byprop(str.encode(prop),
-                                                                 str.encode(value),
-                                                                 c_double(forget_after))
-        elif prop is not nothing or value is not nothing:
-            raise ValueError("if prop is specified, then value must be "
-                             "specified, too, and vice versa.")
-        else:
-            self.obj = lib.lsl_create_continuous_resolver(c_double(forget_after))
-        self.obj = c_void_p(self.obj)
-        if not self.obj:
-            raise RuntimeError("could not create continuous resolver.")
-        
-    def __del__(self):
-        """Destructor for the continuous resolver."""
-        # noinspection PyBroadException
-        try:
-            lib.lsl_destroy_continuous_resolver(self.obj)
-        except:
-            pass
-    
-    def results(self):
-        """Obtain the set of currently present streams on the network.
+    Keyword arguments:
+    forget_after -- When a stream is no longer visible on the network       
+                    (e.g., because it was shut down), this is the time in 
+                    seconds after which it is no longer reported by the 
+                    resolver.
 
-        Returns a list of matching StreamInfo objects (with empty desc
-        field), any of which can subsequently be used to open an inlet.
+    =#
+    if pred != nothing
+        if prop != nothing || value != nothing
+            error("you can only either pass the prop/value " * 
+                 "argument or the pred argument, but not both.")
+        end
+        obj = ccall((:lsl_create_continuous_resolver_bypred, LSLBIN),
+            Ptr{Void},
+            (Cstring, Cdouble),
+            "$(pred)", Cdouble(forget_after)
+        )
+    elseif prop != nothing && value != nothing
+        obj = ccall((:lsl_create_continuous_resolver_byprop, LSLBIN),
+            Ptr{Void},
+            (Cstring, Cstring, Cdouble),
+            "$(prop)", "$(value)", Cdouble(forget_after)
+        )
+    elseif prop != nothing || value != nothing
+        error("if prop is specified, then value must be " *
+              "specified, too, and vice versa.")
+    else
+        obj = ccall((:lsl_create_continuous_resolver, LSLBIN),
+            Ptr{Void},
+            (Cdouble,)
+            Cdouble(forget_after)
+        )
+    end
 
-        """
-        # noinspection PyCallingNonCallable
-        buffer = (c_void_p*1024)()
-        num_found = lib.lsl_resolver_results(self.obj, byref(buffer), 1024)
-        return [StreamInfo(handle=buffer[k]) for k in range(1,num_found)]
+    obj = Ptr{Void}(obj)
+    if obj != C_NULL
+        error("could not create continuous resolver.") # raise RuntimeError
+    end
+end
+
+function del(self::ContinuousResolver)
+    #=Destructor for the continuous resolver.=#
+    # noinspection PyBroadException
+    try
+        ccall((:lsl_destroy_continuous_resolver, LSLBIN), Void, (Ptr{Void},), self.obj)
+    end
+end
+
+function results(self::ContinuousResolver)
+    #=Obtain the set of currently present streams on the network.
+
+    Returns a list of matching StreamInfo objects (with empty desc
+    field), any of which can subsequently be used to open an inlet.
+
+    =#
+    # noinspection PyCallingNonCallable
+    buffer = Vectr{Ptr{Void}}(1024) # c_void_p*1024)()
+    num_found = ccall((:lsl_resolver_results, LSLBIN),
+        Cint,
+        (Ptr{Void}, Ptr{Ptr{Void}}), 
+        self.obj, pointer(buffer), 1024
+    )
+    return [StreamInfo(handle=buffer[k]) for k in range(1,num_found)]
+end
 
 
 # =========================
 # === Error Definitions ===            
 # =========================
 
-# noinspection PyShadowingBuiltins
-class TimeoutError(RuntimeError):
-    # note: although this overrides the name of a built-in exception,
-    #       this API is retained here for compatiblity with the Python 2.x
-    #       version of pylsl
-    pass
+# DRCFIX - use specific Julia exceptions where appropriate
+
+# # noinspection PyShadowingBuiltins
+# class TimeoutError(RuntimeError):
+#     # note: although this overrides the name of a built-in exception,
+#     #       this API is retained here for compatiblity with the Python 2.x
+#     #       version of pylsl
+#     pass
 
 
-class LostError(RuntimeError):
-    pass
+# class LostError(RuntimeError):
+#     pass
 
 
-class InvalidArgumentError(RuntimeError):
-    pass
+# class InvalidArgumentError(RuntimeError):
+#     pass
 
 
-class InternalError(RuntimeError):
-    pass
+# class InternalError(RuntimeError):
+#     pass
 
 
 function handle_error(errcode):
@@ -1536,37 +1613,46 @@ end
 # === Compatibility Interface for old pylsl API ===                   
 # =================================================                   
 
-# set class aliases
-stream_info = StreamInfo
-stream_outlet = StreamOutlet
-stream_inlet = StreamInlet
-xml_element = XMLElement
-timeout_error = TimeoutError
-lost_error = LostError
-vectorf = vectord = vectorl = vectori = vectors = vectorc = vectorstr = list
+# DRCNOTE - Julia impl should not worry about "old pylsls API"
+# # set class aliases
+# stream_info = StreamInfo
+# stream_outlet = StreamOutlet
+# stream_inlet = StreamInlet
+# xml_element = XMLElement
+# timeout_error = TimeoutError
+# lost_error = LostError
+# vectorf = vectord = vectorl = vectori = vectors = vectorc = vectorstr = list
 
 
-def resolve_stream(*args):
-    if len(args) == 0:
+function resolve_stream(args...)
+    if length(args) == 0
         return resolve_streams()
-    elif typeof(args[0]) in [int, float]:
-        return resolve_streams(args[0])
-    elif typeof(args[0]) is str:
-        if len(args) == 1:
-            return resolve_bypred(args[0])
-        elif typeof(args[1]) in [int, float]:
-            return resolve_bypred(args[0], args[1])
-        else:
-            if len(args) == 2:
-                return resolve_byprop(args[0], args[1])
-            else:
-                return resolve_byprop(args[0], args[1], args[2])
-        
+    end
+    elseif typeof(args[1]) <: Union{Int, AbstractFloat}
+        return resolve_streams(args[1])
+    elseif typeof(args[1]) <: AbstractString
+        if length(args) == 1
+            return resolve_bypred(args[1])
+        elseif typeof(args[2]) <: Union{Int, AbstractFloat}
+            return resolve_bypred(args[1], args[2])
+        else
+            if len(args) == 2
+                return resolve_byprop(args[1], args[2])
+            else
+                return resolve_byprop(args[1], args[2], args[3])
+            end
+        end
+    end
+end
+
 
 # ==================================
 # === Module Initialization Code ===
 # ==================================
 
+# DRCFIX, determine a strategy for automatically finding dll/so file
+# DRCFIX, for now, just call set_lslbin
+#=
 # find and load library
 os_name = platform.system()
 bitness = 8 * struct.calcsize("P")
@@ -1586,8 +1672,11 @@ if not libpath:
                        "that it is on the search path (e.g., in the same "
                        "folder as pylsl.py).")
 lib = CDLL(libpath)
+=#
 
 
+# DRCNOTE - setting return types and arg types is already done at each ccall above
+#=
 # set function return types where necessary
 lib.lsl_local_clock.restype = c_double
 lib.lsl_create_streaminfo.restype = c_void_p
@@ -1678,37 +1767,5 @@ try:
 except:
     print("pylsl: ContinuousResolver not (fully) available in your liblsl "
           "version.")
-        
-# set up some type maps
-string2fmt = {"float32": cf_float32, "double64": cf_double64,
-              "string": cf_string, "int32": cf_int32, "int16": cf_int16,
-              "int8": cf_int8, "int64": cf_int64}
-fmt2string = ["undefined", "float32", "double64", "string", "int32", "int16",
-              "int8", "int64"]
-fmt2type = [[], Cfloat, Cdouble, Cstring, Cint, Cshort, Cchar, Clonglong]
-# fmt2push_sample = [[], lib.lsl_push_sample_ftp, lib.lsl_push_sample_dtp,
-#                    lib.lsl_push_sample_strtp, lib.lsl_push_sample_itp,
-#                    lib.lsl_push_sample_stp, lib.lsl_push_sample_ctp, []]
-# fmt2pull_sample = [[], lib.lsl_pull_sample_f, lib.lsl_pull_sample_d,
-#                    lib.lsl_pull_sample_str, lib.lsl_pull_sample_i,
-#                    lib.lsl_pull_sample_s, lib.lsl_pull_sample_c, []]
-# DRCNOTE , switching from Python functions to Julia Symbols for use with ccall
-fmt2push_sample = [[], :lsl_push_sample_ftp, :lsl_push_sample_dtp,
-                   :lsl_push_sample_strtp, :lsl_push_sample_itp,
-                   :lsl_push_sample_stp, :lsl_push_sample_ctp, []]
-fmt2pull_sample = [[], :lsl_pull_sample_f, :lsl_pull_sample_d,
-                   :lsl_pull_sample_str, :lsl_pull_sample_i,
-                   :lsl_pull_sample_s, :lsl_pull_sample_c, []]
-# noinspection PyBroadException
-try:
-    fmt2push_chunk = [[], :lsl_push_chunk_ftp, :lsl_push_chunk_dtp,
-                      :lsl_push_chunk_strtp, :lsl_push_chunk_itp,
-                      :lsl_push_chunk_stp, :lsl_push_chunk_ctp, []]
-    fmt2pull_chunk = [[], :lsl_pull_chunk_f, :lsl_pull_chunk_d,
-                      :lsl_pull_chunk_str, :lsl_pull_chunk_i,
-                      :lsl_pull_chunk_s, :lsl_pull_chunk_c, []]
-catch
-    # if not available
-    fmt2push_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
-    fmt2pull_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
-end
+=#
+
