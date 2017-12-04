@@ -1190,8 +1190,8 @@ end
 # === XML Element ===
 # ===================
   
-class XMLElement:
-    """A lightweight XML element tree modeling the .desc() field of StreamInfo.
+struct XMLElement
+    #=A lightweight XML element tree modeling the .desc() field of StreamInfo.
 
     Has a name and can have multiple named children or have text content as 
     value; attributes are omitted. Insider note: The interface is modeled after 
@@ -1199,142 +1199,171 @@ class XMLElement:
     http://pugixml.googlecode.com/svn/tags/latest/docs/manual/access.html for 
     additional documentation.
 
-    """
+    =#
+    e # DRCFIX - force this to be Ptr{Void} at the struct level?
+end
+
+function XMLElement(self::XMLElement, handle):
+    #=Construct new XML element from existing handle.=#
+    self.e = c_void_p(handle)
+end
+
+# === Tree Navigation ===
+
+function first_child(self::XMLElement):
+    #=Get the first child of the element.=#
+    return XMLElement(lib.lsl_first_child(self.e))
+end
+
+function last_child(self::XMLElement):
+    #=Get the last child of the element.=#
+    return XMLElement(lib.lsl_last_child(self.e))
+end
+
+function child(self::XMLElement, name):
+    #=Get a child with a specified name.=#
+    return XMLElement(lib.lsl_child(self.e, str.encode(name)))
+end
+
+function next_sibling(self::XMLElement, name=nothing):
+    #=Get the next sibling in the children list of the parent node.
+
+    If a name is provided, the next sibling with the given name is returned.
+
+    =#
+    if name is nothing:
+        return XMLElement(lib.lsl_next_sibling(self.e))
+    else
+        return XMLElement(lib.lsl_next_sibling_n(self.e, str.encode(name)))
+    end
+end
+
+function previous_sibling(self::XMLElement, name=nothing):
+    #=Get the previous sibling in the children list of the parent node.
+
+    If a name is provided, the previous sibling with the given name is
+    returned.
+
+    =#
+    if name is nothing:
+        return XMLElement(lib.lsl_previous_sibling(self.e))
+    else
+        return XMLElement(lib.lsl_previous_sibling_n(self.e,
+                                                        str.encode(name)))
+    end
+end
+
+function parent(self::XMLElement)
+    #=Get the parent node.=#
+    return XMLElement(lib.lsl_parent(self.e))
+end
+
+# === Content Queries ===
+
+function empty(self::XMLElement)
+    #=Whether this node is empty.=#
+    return bool(lib.lsl_empty(self.e))
+end
+
+function is_text(self::XMLElement)
+    #=Whether this is a text body (instead of an XML element).
+
+    True both for plain char data and CData.
+
+    =#
+    return bool(lib.lsl_is_text(self.e))
+end
+
+function name(self::XMLElement)
+    #=Name of the element.=#
+    return lib.lsl_name(self.e).decode("utf-8")
+end
+
+function value(self::XMLElement)
+    #=Value of the element.=#
+    return lib.lsl_value(self.e).decode("utf-8")
+end
+
+function child_value(self::XMLElement, name=nothing)
+    #=Get child value (value of the first child that is text).
+
+    If a name is provided, then the value of the first child with the
+    given name is returned.
+
+    =#
+    if name is nothing
+        res = lib.lsl_child_value(self.e)
+    else
+        res = lib.lsl_child_value_n(self.e, str.encode(name))
+    end
+    return res.decode("utf-8")
+end
+
+# === Modification ===
+
+# DRCFIX - should there be a ! (aka "bang") to the modifying methods of XMLElement, per Julia guidelines???
+function append_child_value(self::XMLElement, name, value)
+    #=Append a child node with a given name, which has a (nameless) 
+    plain-text child with the given text value.=#
+    return XMLElement(lib.lsl_append_child_value(self.e,
+                                                    str.encode(name),
+                                                    str.encode(value)))
+end
+
+function prepend_child_value(self::XMLElement, name, value)
+    #=Prepend a child node with a given name, which has a (nameless) 
+    plain-text child with the given text value.=#
+    return XMLElement(lib.lsl_prepend_child_value(self.e,
+                                                    str.encode(name),
+                                                    str.encode(value)))
+end
+
+function set_child_value(self::XMLElement, name, value)
+    #=Set the text value of the (nameless) plain-text child of a named 
+    child node.=#
+    return XMLElement(lib.lsl_set_child_value(self.e,
+                                                str.encode(name),
+                                                str.encode(value)))
+end
+
+function set_name(self::XMLElement, name)
+    #=Set the element"s name. Returns False if the node is empty.=#
+    return bool(lib.lsl_set_name(self.e, str.encode(name)))
+end
+
+function set_value(self::XMLElement, value)
+    #=Set the element"s value. Returns False if the node is empty.=#
+    return bool(lib.lsl_set_value(self.e, str.encode(value)))
+end
+
+function append_child(self::XMLElement, name)
+    #=Append a child element with the specified name.=#
+    return XMLElement(lib.lsl_append_child(self.e, str.encode(name)))
+end
+
+function prepend_child(self::XMLElement, name)
+    #=Prepend a child element with the specified name.=#
+    return XMLElement(lib.lsl_prepend_child(self.e, str.encode(name)))
+end
+
+function append_copy(self::XMLElement, elem)
+    #=Append a copy of the specified element as a child.=#
+    return XMLElement(lib.lsl_append_copy(self.e, elem.e))
+end
+
+function prepend_copy(self::XMLElement, elem)
+    #=Prepend a copy of the specified element as a child.=#
+    return XMLElement(lib.lsl_prepend_copy(self.e, elem.e))
+end
     
-    def __init__(self, handle):
-        """Construct new XML element from existing handle."""
-        self.e = c_void_p(handle)
-    
-    # === Tree Navigation ===
-    
-    def first_child(self):
-        """Get the first child of the element."""
-        return XMLElement(lib.lsl_first_child(self.e))
-     
-    def last_child(self):
-        """Get the last child of the element."""
-        return XMLElement(lib.lsl_last_child(self.e))
-
-    def child(self, name):
-        """Get a child with a specified name."""
-        return XMLElement(lib.lsl_child(self.e, str.encode(name)))
-        
-    def next_sibling(self, name=nothing):
-        """Get the next sibling in the children list of the parent node.
-
-        If a name is provided, the next sibling with the given name is returned.
-
-        """
-        if name is nothing:
-            return XMLElement(lib.lsl_next_sibling(self.e))
-        else:
-            return XMLElement(lib.lsl_next_sibling_n(self.e, str.encode(name)))
-    
-    def previous_sibling(self, name=nothing):
-        """Get the previous sibling in the children list of the parent node.
-
-        If a name is provided, the previous sibling with the given name is
-        returned.
-
-        """
-        if name is nothing:
-            return XMLElement(lib.lsl_previous_sibling(self.e))
-        else:
-            return XMLElement(lib.lsl_previous_sibling_n(self.e,
-                                                         str.encode(name)))
-        
-    def parent(self):
-        """Get the parent node."""
-        return XMLElement(lib.lsl_parent(self.e))
-    
-    # === Content Queries ===
-    
-    def empty(self):
-        """Whether this node is empty."""
-        return bool(lib.lsl_empty(self.e))
-    
-    def is_text(self):
-        """Whether this is a text body (instead of an XML element).
-
-        True both for plain char data and CData.
-
-        """
-        return bool(lib.lsl_is_text(self.e))
-    
-    def name(self):
-        """Name of the element."""
-        return lib.lsl_name(self.e).decode("utf-8")
-    
-    def value(self):
-        """Value of the element."""
-        return lib.lsl_value(self.e).decode("utf-8")
-        
-    def child_value(self, name=nothing):
-        """Get child value (value of the first child that is text).
-
-        If a name is provided, then the value of the first child with the
-        given name is returned.
-
-        """
-        if name is nothing:
-            res = lib.lsl_child_value(self.e)
-        else:
-            res = lib.lsl_child_value_n(self.e, str.encode(name))
-        return res.decode("utf-8")
-
-    # === Modification ===
-        
-    def append_child_value(self, name, value):
-        """Append a child node with a given name, which has a (nameless) 
-        plain-text child with the given text value."""
-        return XMLElement(lib.lsl_append_child_value(self.e,
-                                                     str.encode(name),
-                                                     str.encode(value)))
-    
-    def prepend_child_value(self, name, value):
-        """Prepend a child node with a given name, which has a (nameless) 
-        plain-text child with the given text value."""
-        return XMLElement(lib.lsl_prepend_child_value(self.e,
-                                                      str.encode(name),
-                                                      str.encode(value)))
-
-    def set_child_value(self, name, value):
-        """Set the text value of the (nameless) plain-text child of a named 
-        child node."""
-        return XMLElement(lib.lsl_set_child_value(self.e,
-                                                  str.encode(name),
-                                                  str.encode(value)))
-        
-    def set_name(self, name):
-        """Set the element"s name. Returns False if the node is empty."""
-        return bool(lib.lsl_set_name(self.e, str.encode(name)))
-     
-    def set_value(self, value):
-        """Set the element"s value. Returns False if the node is empty."""
-        return bool(lib.lsl_set_value(self.e, str.encode(value)))
-        
-    def append_child(self, name):
-        """Append a child element with the specified name."""
-        return XMLElement(lib.lsl_append_child(self.e, str.encode(name)))
-     
-    def prepend_child(self, name):
-        """Prepend a child element with the specified name."""
-        return XMLElement(lib.lsl_prepend_child(self.e, str.encode(name)))
-        
-    def append_copy(self, elem):
-        """Append a copy of the specified element as a child."""
-        return XMLElement(lib.lsl_append_copy(self.e, elem.e))
-        
-    def prepend_copy(self, elem):
-        """Prepend a copy of the specified element as a child."""
-        return XMLElement(lib.lsl_prepend_copy(self.e, elem.e))
-        
-    def remove_child(self, rhs):
-        """Remove a given child element, specified by name or as element."""
-        if typeof(rhs) is XMLElement:
-            lib.lsl_remove_child(self.e, rhs.e)
-        else:
-            lib.lsl_remove_child_n(self.e, rhs)
+function remove_child(self::XMLElement, rhs)
+    #=Remove a given child element, specified by name or as element.=#
+    if typeof(rhs) is XMLElement:
+        lib.lsl_remove_child(self.e, rhs.e)
+    else
+        lib.lsl_remove_child_n(self.e, rhs)
+    end
+end
 
             
 # ==========================
