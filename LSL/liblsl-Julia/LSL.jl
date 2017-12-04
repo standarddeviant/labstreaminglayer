@@ -885,8 +885,10 @@ function StreamInlet(info, max_buflen=360, max_chunklen=0, recover=True, process
     do_pull_sample = fmt2pull_sample[channel_format]
     do_pull_chunk  = fmt2pull_chunk[channel_format]
     value_type     = fmt2type[channel_format]
-    sample_type    = value_type  # DRCNOTE, we can't use ctypes trick of multiplying basic type...
-    sample         = sample_type # DRCNOTE, so value_type == sample_type == sample, keeping all three for now
+    # DRCNOTE, we can't use ctypes trick of multiplying basic type...
+    # DRCNOTE, so value_type == sample_type, keeping both for now
+    sample_type    = value_type
+    sample         = Vector{value_type}(channel_count) # A buffer for a single sample for each channel
     buffers        = Dict() # DRCNOTE, this was a dictionary in python impl, copying that logic for now
     StreamInfo(
         obj,
@@ -1031,25 +1033,38 @@ function pull_sample(self::StreamInlet, timeout=FOREVER, sample=nothing)
     =#
     
     # support for the legacy API
-    if typeof(timeout) is list:
-        assign_to = timeout
-        timeout = sample if typeof(sample) is float else 0.0
-    else:
-        assign_to = nothing
+    # DRCFIX - does legacy api of "pull_sample" need to be supported???
+    assign_to = nothing
+    # if typeof(timeout) is list:
+    #     assign_to = timeout
+    #     timeout = sample if typeof(sample) is float else 0.0
+    # else:
+    #     assign_to = nothing
             
-    errcode = c_int()
-    timestamp = self.do_pull_sample(self.obj, byref(self.sample),
-                                    self.channel_count, c_double(timeout),
-                                    byref(errcode))
+    errcode = Cint(0) # c_int()
+    # timestamp = self.do_pull_sample(self.obj, byref(self.sample),
+    #                                 self.channel_count, c_double(timeout),
+    #                                 byref(errcode))
+    # DRCNOTE, "self.sample" above is a C-compatiable buffer 
+    # DRCNOTE, for holding self.channel_count values of type self.value_type
+    timestamp = ccall((self.do_pull_sample, LSLBIN),
+        Cdouble,
+        (Ptr{Void}, Ptr{self.value_type}, Cint, Cdouble, Ptr{Cint}),
+        self.obj, pointer(self.sample), Cint(self.channel_count), 
+            Cdouble(timeout), pointer(errcode)
+    )
     handle_error(errcode)
-    if timestamp:
-        sample = [v for v in self.sample]
-        if self.channel_format == cf_string:
-            sample = [v.decode("utf-8") for v in sample]
-        end
-        if assign_to is not nothing:
-            assign_to[:] = sample
-        end
+    if timestamp
+        # sample = [v for v in self.sample]
+        sample = deepcopy(self.sample)
+        # DRCFIX - ensure this string manipulation is unnecessary with Julia...
+        # if self.channel_format == cf_string:
+        #     sample = [v.decode("utf-8") for v in sample]
+        # end
+        # DRCFIX - does legacy api of "pull_sample" need to be supported???
+        # if assign_to is not nothing:
+        #     assign_to[:] = sample
+        # end
         return sample, timestamp
     else
         return nothing, nothing
@@ -1072,6 +1087,8 @@ function pull_chunk(self::StreamInlet, timeout=0.0, max_samples=1024, dest_obj=n
                 number of samples.
                 A numpy buffer must be order="C"
                 (default nothing)
+    # DRCFIX - in pull_chunk, what does 'A numpy buffer must be order="C"' imply for Julia impl ???
+    # DRCFIX - by default, I think Julia arrays are fortran order...
                     
     Returns a tuple (samples,timestamps) where samples is a list of samples 
     (each itself a list of values), and timestamps is a list of time-stamps.
@@ -1081,44 +1098,61 @@ function pull_chunk(self::StreamInlet, timeout=0.0, max_samples=1024, dest_obj=n
     =#
     # look up a pre-allocated buffer of appropriate length        
     num_channels = self.channel_count
-    max_values = max_samples*num_channels
+    max_values = max_samples * num_channels
 
-    if max_samples not in self.buffers:
+    if max_samples not in keys(self.buffers):
         # noinspection PyCallingNonCallable
-        self.buffers[max_samples] = ((self.value_type*max_values)(),
-                                        (c_double*max_samples)())
+        # self.buffers[max_samples] = ((self.value_type*max_values)(),
+        #                                 (c_double*max_samples)())
+        # DRCNOTE constructing 2-element Tuple here
+        self.buffers[max_samples] = (
+            Vector{self.value_type}(max_values), 
+            Vector{Cdouble}(max_samples)
+        )
     end
-    if dest_obj is not nothing:
-        data_buff = (self.value_type * max_values).from_buffer(dest_obj)
-    else:
-        data_buff = self.buffers[max_samples][0]
+    if dest_obj != nothing
+        # data_buff = (self.value_type * max_values).from_buffer(dest_obj)
+        data_buff = dest_obj
+    else
+        data_buff = self.buffers[max_samples][1] # DRCNOTE changed idx from 0 to 1 b/c Python to Julia
     end
-    ts_buff = self.buffers[max_samples][1]
+    ts_buff = self.buffers[max_samples][2] # DRCNOTE changed idx from 1 to 2 b/c Python to Julia
 
     # read data into it
-    errcode = c_int()
+    errcode = Cint(0) # c_int()
     # noinspection PyCallingNonCallable
-    num_elements = self.do_pull_chunk(self.obj, byref(data_buff),
-                                        byref(ts_buff), max_values,
-                                        max_samples, c_double(timeout),
-                                        byref(errcode))
+    # num_elements = self.do_pull_chunk(self.obj, byref(data_buff),
+    #                                     byref(ts_buff), max_values,
+    #                                     max_samples, c_double(timeout),
+    #                                     byref(errcode))
+    num_elements = ccall((self.do_pull_chunk, LSLBIN),
+        Culong,
+        (Ptr{Void}, Ptr{self.value_type}, Ptr{Cdouble}, 
+            Cint, Cint, Cdouble, Ptr{Cint} ),
+        self.obj, pointer(data_buff), pointer(ts_buff),
+            Cint(max_values), Cint(max_values), Cdouble(timeout), pointer(errcode)
+    )
     handle_error(errcode)
     # return results (note: could offer a more efficient format in the 
     # future, e.g., a numpy array)
     num_samples = num_elements/num_channels
-    if dest_obj is nothing:
-        samples = [[data_buff[s*num_channels+c] for c in range(1,num_channels)]
-                    for s in range(1,int(num_samples))]
-        if self.channel_format == cf_string:
-            samples = [[v.decode("utf-8") for v in s] for s in samples]
-            free_char_p_array_memory(data_buff, max_values)
-        end
-    else:
+    if dest_obj == nothing
+        samples = deepcopy(data_buff) # DRCNOTE deep copy seems correct here
+
+        # DRCFIX - are the below shenaningans required for Julia impl?
+        # DRCFIX - I'm wondering if Julia gc will obviate free_char_p_array_memory
+        # samples = [[data_buff[s*num_channels+c] for c in range(1,num_channels)]
+        #             for s in range(1,int(num_samples))]
+        # if self.channel_format == cf_string:
+        #     samples = [[v.decode("utf-8") for v in s] for s in samples]
+        #     free_char_p_array_memory(data_buff, max_values)
+        # end
+    else
         samples = nothing
     end
 
-    timestamps = [ts_buff[s] for s in range(1,int(num_samples))]
-    return samples, timestamps
+    timestamps = [ts_buff[s] for s in range(1,Int(num_samples))]
+    (samples, timestamps)
 end
     
 function samples_available(self::StreamInlet)
@@ -1131,7 +1165,8 @@ function samples_available(self::StreamInlet)
     (otherwise it will be 1 or 0).
 
     =#
-    return lib.lsl_samples_available(self.obj)
+    # return lib.lsl_samples_available(self.obj)
+    ccall((:lsl_samples_available, LSLBIN), Cuint, (Ptr{Void,}), self.obj )
 end
     
 function was_clock_reset(self::StreamInlet)
@@ -1143,7 +1178,12 @@ function was_clock_reset(self::StreamInlet)
     hot-swapped or restarted.
 
     =#
-    return bool(lib.lsl_was_clock_reset(self.obj))
+    # return bool(lib.lsl_was_clock_reset(self.obj))
+    Bool(ccall((:lsl_was_clock_reset), 
+        Cuint, 
+        (Ptr{Void},),
+        self.obj
+    ))
 end
 
 # ===================
