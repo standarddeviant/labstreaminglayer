@@ -5,9 +5,6 @@
 # Dave Crist 2017
 module LSL
 
-# const LSLBIN = ""
-# DRCFIX add a clean "setter" for a module-global-const variable... this seems counter-intuitive... do we need const for LSLBIN???
-
 # START JULIA BOILERPLATE CONFIG
 # FIXME put using XXX here
 # FIXME put using XXX here
@@ -19,6 +16,23 @@ module LSL
 
 # importall OtherLib
 # END JULIA BOILERPLATE CONFIG
+
+const LSLBIN = ""
+function set_lslbin(inp)
+    LSLBIN = inp
+end
+# DRCFIX Is there a cleaner way to make a setter for a variable that requires const?
+#        this seems counter-intuitive... do we need const for LSLBIN???
+
+# Julia convenience functions
+function ptr2str(inp,funcname=nothing)
+    tmpptr = Ptr{Cchar}(inp)
+    if tmpptr == C_NULL
+        error("Unable to convert ptr to str (ptr==C_NULL)" * 
+            "$(funcname!=nothing?" from "*funcname:"")"))
+    end
+    unsafe_string(tmpptr)
+end
 
 #=Python API for the lab streaming layer.
 
@@ -1189,7 +1203,7 @@ end
 # ===================
 # === XML Element ===
 # ===================
-  
+
 struct XMLElement
     #=A lightweight XML element tree modeling the .desc() field of StreamInfo.
 
@@ -1203,26 +1217,29 @@ struct XMLElement
     e # DRCFIX - force this to be Ptr{Void} at the struct level?
 end
 
-function XMLElement(self::XMLElement, handle):
+function XMLElement(handle):
     #=Construct new XML element from existing handle.=#
-    self.e = c_void_p(handle)
+    XMLElement(Ptr{Void}(handle))
 end
 
 # === Tree Navigation ===
 
 function first_child(self::XMLElement):
     #=Get the first child of the element.=#
-    return XMLElement(lib.lsl_first_child(self.e))
+    # return XMLElement(lib.lsl_first_child(self.e))
+    XMLElement(ccall((:lsl_first_child, LSLBIN), Ptr{Void}, (Ptr{Void},) self.e))
 end
 
 function last_child(self::XMLElement):
     #=Get the last child of the element.=#
-    return XMLElement(lib.lsl_last_child(self.e))
+    # return XMLElement(lib.lsl_last_child(self.e))
+    XMLElement(ccall((:lsl_last_child, LSLBIN), Ptr{Void}, (Ptr{Void},) self.e))
 end
 
 function child(self::XMLElement, name):
     #=Get a child with a specified name.=#
-    return XMLElement(lib.lsl_child(self.e, str.encode(name)))
+    # return XMLElement(lib.lsl_child(self.e, str.encode(name)))
+    XMLElement(ccall((:lsl_child, LSLBIN), Ptr{Void}, (Ptr{Void},Cstring) self.e, name))
 end
 
 function next_sibling(self::XMLElement, name=nothing):
@@ -1231,10 +1248,18 @@ function next_sibling(self::XMLElement, name=nothing):
     If a name is provided, the next sibling with the given name is returned.
 
     =#
-    if name is nothing:
-        return XMLElement(lib.lsl_next_sibling(self.e))
+    if name == nothing:
+        return XMLElement(ccall((:lsl_next_sibling, LSLBIN), 
+            Ptr{Void},
+            (Ptr{Void},),
+            self.e
+        ))
     else
-        return XMLElement(lib.lsl_next_sibling_n(self.e, str.encode(name)))
+        return XMLElement(ccall((:lsl_next_sibling_n, LSLBIN),
+            Ptr{Void},
+            (Ptr{Void}, Cstring),
+            self.e, name
+        ))
     end
 end
 
@@ -1245,24 +1270,31 @@ function previous_sibling(self::XMLElement, name=nothing):
     returned.
 
     =#
-    if name is nothing:
-        return XMLElement(lib.lsl_previous_sibling(self.e))
+    if name == nothing
+        return XMLElement(call((:lsl_previous_sibling, LSLBIN),
+            Ptr{Void},
+            (Ptr{Void}, )
+            self.e
+        ))
     else
-        return XMLElement(lib.lsl_previous_sibling_n(self.e,
-                                                        str.encode(name)))
+        return XMLElement(ccall((:lsl_previous_sibling_n, LSLBIN),
+            Ptr{Void},
+            (Ptr{Void}, Cstring),
+            self.e, name
+        ))
     end
 end
 
 function parent(self::XMLElement)
     #=Get the parent node.=#
-    return XMLElement(lib.lsl_parent(self.e))
+    XMLElement(ccall((:lsl_parent, LSLBIN), Ptr{Void}, (Ptr{Void},), self.e))
 end
 
 # === Content Queries ===
 
 function empty(self::XMLElement)
     #=Whether this node is empty.=#
-    return bool(lib.lsl_empty(self.e))
+    Bool(ccall((:lsl_empty, LSLBIN), Cint, (Ptr{void},), self.e))
 end
 
 function is_text(self::XMLElement)
@@ -1271,17 +1303,19 @@ function is_text(self::XMLElement)
     True both for plain char data and CData.
 
     =#
-    return bool(lib.lsl_is_text(self.e))
+    Bool(ccall((:lsl_is_text, LSLBIN), Cint, (Ptr{Void},), self.e))
 end
 
 function name(self::XMLElement)
     #=Name of the element.=#
-    return lib.lsl_name(self.e).decode("utf-8")
+    outp = ccall((:lsl_name, LSLBIN), Cstring, (Ptr{Void},), self.e)
+    ptr2str(outp, funcname="lsl_name")
 end
 
 function value(self::XMLElement)
     #=Value of the element.=#
-    return lib.lsl_value(self.e).decode("utf-8")
+    outp = ccall((:lsl_value, LSLBIN), Cstring, (Ptr{Void},), self.e)
+    ptr2str(outp, funcname="lsl_value")
 end
 
 function child_value(self::XMLElement, name=nothing)
@@ -1291,12 +1325,12 @@ function child_value(self::XMLElement, name=nothing)
     given name is returned.
 
     =#
-    if name is nothing
-        res = lib.lsl_child_value(self.e)
+    if name == nothing
+        res = ccall((:lsl_child_value, LSLBIN), Cstring, (Ptr{Void},), self.e)
     else
-        res = lib.lsl_child_value_n(self.e, str.encode(name))
+        res = ccall((:lsl_child_value_n, LSLBIN), Cstring, (Ptr{Void}, Cstring), self.e, name)
     end
-    return res.decode("utf-8")
+    ptr2str(res, "lsl_child_value")
 end
 
 # === Modification ===
@@ -1305,64 +1339,89 @@ end
 function append_child_value(self::XMLElement, name, value)
     #=Append a child node with a given name, which has a (nameless) 
     plain-text child with the given text value.=#
-    return XMLElement(lib.lsl_append_child_value(self.e,
-                                                    str.encode(name),
-                                                    str.encode(value)))
+    # return XMLElement(lib.lsl_append_child_value(self.e,
+    #                                                 str.encode(name),
+    #                                                 str.encode(value)))
+    XMLElement(ccall((:lsl_append_child_value, LSLBIN),
+        Ptr{Void},
+        (Ptr{Void}, Cstring, Cstring),
+        self.e, name, value
+    ))
 end
 
 function prepend_child_value(self::XMLElement, name, value)
     #=Prepend a child node with a given name, which has a (nameless) 
     plain-text child with the given text value.=#
-    return XMLElement(lib.lsl_prepend_child_value(self.e,
-                                                    str.encode(name),
-                                                    str.encode(value)))
+    XMLElement(ccall((:lsl_prepend_child_value, LSLBIN),
+        Ptr{Void},
+        (Ptr{Void}, Cstring, Cstring),
+        self.e, name, value
+    ))
 end
 
 function set_child_value(self::XMLElement, name, value)
     #=Set the text value of the (nameless) plain-text child of a named 
     child node.=#
-    return XMLElement(lib.lsl_set_child_value(self.e,
-                                                str.encode(name),
-                                                str.encode(value)))
+    XMLElement(ccall((:lib.lsl_set_child_value, LSLBIN),
+        Ptr{Void},
+        (Ptr{Void}, Cstring, Cstring),
+        self.e, name, value
+    ))
 end
 
 function set_name(self::XMLElement, name)
     #=Set the element"s name. Returns False if the node is empty.=#
-    return bool(lib.lsl_set_name(self.e, str.encode(name)))
+    # return bool(lib.lsl_set_name(self.e, str.encode(name)))
+    Bool(ccall((:lsl_set_name, LSLBIN), Cint, (Ptr{Void}, Cstring), self.e, "$(name)"))
 end
 
 function set_value(self::XMLElement, value)
     #=Set the element"s value. Returns False if the node is empty.=#
-    return bool(lib.lsl_set_value(self.e, str.encode(value)))
+    Bool(ccall((:lsl_set_value, LSLBIN), Cint, (Ptr{Void}, Cstring), self.e, "$(value)"))
 end
 
 function append_child(self::XMLElement, name)
     #=Append a child element with the specified name.=#
-    return XMLElement(lib.lsl_append_child(self.e, str.encode(name)))
+    XMLElement(ccall((:lsl_append_child, LSLBIN), 
+        Ptr{Void}, 
+        (Ptr{Void}, Cstring)
+        self.e, "$(name)"
+    ))
 end
 
 function prepend_child(self::XMLElement, name)
     #=Prepend a child element with the specified name.=#
-    return XMLElement(lib.lsl_prepend_child(self.e, str.encode(name)))
+    XMLElement(ccall((:lsl_prepend_child, LSLBIN),
+        Ptr{Void},
+        (Ptr{Void}, Cstring),
+        self.e, "$(name)"
+    ))
 end
 
-function append_copy(self::XMLElement, elem)
+function append_copy(self::XMLElement, elem::XMLElement)
     #=Append a copy of the specified element as a child.=#
-    return XMLElement(lib.lsl_append_copy(self.e, elem.e))
+    XMLElement(ccall((:lsl_append_copy, LSLBIN),
+        Ptr{Void},
+        (Ptr{Void}, Ptr{Void})
+        self.e, elem.e
+    ))
 end
 
-function prepend_copy(self::XMLElement, elem)
+function prepend_copy(self::XMLElement, elem::XMLElement)
     #=Prepend a copy of the specified element as a child.=#
-    return XMLElement(lib.lsl_prepend_copy(self.e, elem.e))
+    XMLElement(ccall((:lsl_prepend_copy, LSLBIN),
+        Ptr{Void},
+        (Ptr{Void}, Ptr{Void}),
+        self.e, elem.e
+    ))
 end
-    
-function remove_child(self::XMLElement, rhs)
-    #=Remove a given child element, specified by name or as element.=#
-    if typeof(rhs) is XMLElement:
-        lib.lsl_remove_child(self.e, rhs.e)
-    else
-        lib.lsl_remove_child_n(self.e, rhs)
-    end
+
+#=Remove a given child element, specified by name or as element.=#
+function remove_child(self::XMLElement, rhs::XMLElement)
+    ccall((:lsl_remove_child, LSLBIN), Void, (Ptr{Void}, Ptr{Void}), self.e, rhs.e)
+end
+function remove_child(self::XMLElement, rhs::AbstractString)
+    ccall((:lsl_remove_child_n, LSLBIN), Void, (Ptr{Void}, Cstring), self.e, "$(rhs)")
 end
 
             
@@ -1453,22 +1512,24 @@ class InternalError(RuntimeError):
     pass
 
 
-def handle_error(errcode):
+function handle_error(errcode):
     #=Error handler function. Translates an error code into an exception.=#
-    if typeof(errcode) is c_int:
-        errcode = errcode.value
-    if errcode == 0:
+    # if typeof(errcode) is c_int:
+    #     errcode = errcode.value
+    if errcode == 0
         pass  # no error
-    elif errcode == -1:
-        raise TimeoutError("the operation failed due to a timeout.")
-    elif errcode == -2:
-        raise LostError("the stream has been lost.")
-    elif errcode == -3:
-        raise InvalidArgumentError("an argument was incorrectly specified.")
-    elif errcode == -4:
-        raise InternalError("an internal error has occurred.")
-    elif errcode < 0: 
-        raise RuntimeError("an unknown error has occurred.")
+    elseif errcode == -1
+        error("the operation failed due to a timeout.") # raise TimeoutError
+    elseif errcode == -2
+        error("the stream has been lost.") # raise LostError
+    elseif errcode == -3
+        error("an argument was incorrectly specified.") # raise InvalidArgumentError
+    elseif errcode == -4
+        error("an internal error has occurred.") # raise InternalError
+    elseif errcode < 0
+        error("an unknown error has occurred.") # raise RuntimeError
+    end
+end
 
 
 # =================================================        
