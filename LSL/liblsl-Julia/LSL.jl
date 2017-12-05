@@ -316,11 +316,11 @@ function StreamInfo(name="untitled", type_="", channel_count=1,
         #                                         c_double(nominal_srate),
         #                                         channel_format,
         #                                         c_char_p(str.encode(source_id)))
-        obj = StreamInfo(ccall((:lsl_create_streaminfo, LSLBIN), 
+        obj = ccall((:lsl_create_streaminfo, LSLBIN), 
             Ptr{Void}, 
             (Cstring, Cstring, Cint, Cdouble, Cint, Cstring), 
             name, type_, Cint(channel_count), Cdouble(nominal_srate), Cint(channel_count), source_id
-        ))
+        )
 
         obj = Ptr{Void}(obj)
         if obj == C_NULL
@@ -356,7 +356,7 @@ function name(self::StreamInfo)
     #lib.lsl_get_name(self.obj).decode("utf-8")
     outp = ccall((:lsl_get_name, LSLBIN), Cstring, (Ptr{Void},), self.obj)
     # convert Cstring to Julia string if outp is not NULL
-    outp != C_NULL ? unsafe_string(outp) : ""
+    ptr2str(outp)
 end
 
 """Content type of the stream.
@@ -371,9 +371,9 @@ content types is preferred.
 """
 function type_(self::StreamInfo)
     # return lib.lsl_get_type(self.obj).decode("utf-8")
-    outp = ccall((:lsl_get_name, LSLBIN), Cstring, (Ptr{Void},), self.obj)
+    outp = ccall((:lsl_get_type, LSLBIN), Cstring, (Ptr{Void},), self.obj)
     # convert Cstring to Julia string if outp is not NULL
-    outp != C_NULL ? unsafe_string(outp) : ""
+    ptr2str(outp)
 end
     
 """Number of channels of the stream.
@@ -428,7 +428,7 @@ function source_id(self::StreamInfo)
     # return lib.lsl_get_source_id(self.obj).decode("utf-8")
     outp = ccall((:lsl_get_source_id, LSLBIN), Cstring, (Ptr{Void},), self.obj)
     # convert Cstring to Julia string if outp is not NULL
-    outp != C_NULL ? unsafe_string(outp) : ""
+    ptr2str(outp)
 end
     
 # === Hosting Information (assigned when bound to an outlet/inlet) ===
@@ -465,7 +465,7 @@ function uid(self::StreamInfo)
     if outp == C_NULL
         error("Unable to resolve uid, received C_NULL from lsl_get_uid")
     end
-    unsafe_string(outp) # convert Ptr{Cchar} to a Julia String
+    ptr2str(outp) # convert Ptr{Cchar} to a Julia String
 end
 
 """Session ID for the given stream.
@@ -485,7 +485,7 @@ function session_id(self::StreamInfo)
     if outp == C_NULL
         error("Unable to resolve uid, received C_NULL from lsl_get_session_id")
     end
-    unsafe_string(outp) # convert Ptr{Cchar} to a Julia String    
+    ptr2str(outp) # convert Ptr{Cchar} to a Julia String    
 end
     
 """Hostname of the providing machine."""
@@ -496,8 +496,7 @@ function hostname(self::StreamInfo)
     if outp == C_NULL
         error("Unable to resolve uid, received C_NULL from lsl_get_hostname")
     end
-    unsafe_string(outp) # convert Ptr{Cchar} to a Julia String    
-
+    ptr2str(outp) # convert Ptr{Cchar} to a Julia String    
 end
     
 # === Data Description (can be modified) ===
@@ -543,7 +542,7 @@ function as_xml(self::StreamInfo)
     # return lib.lsl_get_xml(self.obj).decode("utf-8")
     outp = ccall((:lsl_get_xml, LSLBIN), Cstring, (Ptr{Void},), self.obj)
     # convert Cstring to Julia string if outp is not NULL
-    outp != C_NULL ? unsafe_string(outp) : ""
+    ptr2str(outp)
 end
         
 
