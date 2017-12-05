@@ -158,6 +158,7 @@ string2fmt = Dict("float32" => cf_float32, "double64" => cf_double64,
 fmt2string = ["undefined", "float32", "double64", "string", "int32", "int16",
     "int8", "int64"]
 fmt2type = [[], Cfloat, Cdouble, Cstring, Cint, Cshort, Cchar, Clonglong]
+LSL_VALUE_TYPE_UNION = Union{fmt2type[2:end]...}
 # fmt2push_sample = [[], lib.lsl_push_sample_ftp, lib.lsl_push_sample_dtp,
 #                    lib.lsl_push_sample_strtp, lib.lsl_push_sample_itp,
 #                    lib.lsl_push_sample_stp, lib.lsl_push_sample_ctp, []]
@@ -543,7 +544,7 @@ end
 # === Stream Outlet ===
 # =====================
         
-mutable struct StreamOutlet
+mutable struct StreamOutlet{T<:LSL_VALUE_TYPE_UNION}
     #=A stream outlet.
 
     Outlets are used to make streaming data (and the meta-data) available on 
@@ -556,11 +557,11 @@ mutable struct StreamOutlet
     channel_count  # = info.channel_count()                   # Cint
     do_push_sample # = fmt2push_sample[self.channel_format]   # Julia func (currently)
     do_push_chunk  # = fmt2push_chunk[self.channel_format]    # Julia func (currently)
-    value_type     # = fmt2type[self.channel_format]          # [ Cfloat | Cint | etc. ]
-    sample_type    # = self.value_type*self.channel_count     # 
+    # value_type     # = fmt2type[self.channel_format]          # [ Cfloat | Cint | etc. ]
+    # sample_type    # = self.value_type*self.channel_count     # 
 end
     
-function StreamOutlet(info, chunk_size=0, max_buffered=360)
+function StreamOutlet{T}(info, chunk_size=0, max_buffered=360) where {T<:LSL_VALUE_TYPE_UNION}
     #=Establish a new stream outlet. This makes the stream discoverable.
     
     Keyword arguments:
@@ -590,16 +591,16 @@ function StreamOutlet(info, chunk_size=0, max_buffered=360)
     channel_format = info.channel_format()
     do_push_sample = fmt2push_sample[self.channel_format]
     do_push_chunk  = fmt2push_chunk[self.channel_format]
-    value_type     = fmt2type[self.channel_format]
-    sample_type    = fmt2type[self.channel_format] * channel_count # DRCFIX, can't use ctypes trick...
+    # value_type     = fmt2type[self.channel_format]
+    # sample_type    = fmt2type[self.channel_format] * channel_count # DRCFIX, can't use ctypes trick...
     StreamOutlet(
         obj, 
         channel_format,
         channel_count,
         do_push_sample,
         do_push_chunk,
-        value_type,
-        sample_type
+        # value_type,
+        # sample_type
     )
 end
                 
@@ -618,7 +619,8 @@ function del(self::StreamOutlet)
     end
 end
 
-function push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
+function push_sample(self::StreamOutlet{T}, x::AbstractArray, 
+        timestamp=0.0, pushthrough=True) where {T<:LSL_VALUE_TYPE_UNION}
     #=Push a sample into the outlet.
 
     Each entry in the list corresponds to one channel.
@@ -640,15 +642,15 @@ function push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
         # if self.channel_format == cf_string 
         #     x = [v.encode("utf-8") for v in x]
         # end
-        tmpx = Vector{self.value_type}(x)
-        tmpts = Cdouble(timestamp)
-        tmppt = Cint(pushthrough)
+        tmpx = Vector{T}(x)
+        # tmpts = Cdouble(timestamp)
+        # tmppt = Cint(pushthrough)
         # self.obj, tmpx, tmpts, tmppt
+        value_type = self.value_type
         handle_error(ccall((self.do_push_sample, LSLBIN),
             Cint, # output type # DRCFIX double check this
-            (Ptr{Void}, Ptr{self.sample_type}, Cdouble, Cint), # input types
-            self.obj, tmpvec, Cdouble(timestamp), Cint(pushthrough)
-
+            (Ptr{Void}, Ptr{T}, Cdouble, Cint), # input types
+            self.obj, pointer(tmpx), Cdouble(timestamp), Cint(pushthrough)
         ))
     else
         throw(ErrorException(
@@ -656,7 +658,8 @@ function push_sample(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
     end
 end
 
-function push_chunk(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
+function push_chunk(self::StreamOutlet{T}, x::AbstractArray, 
+        timestamp=0.0, pushthrough=True) where {T<:LSL_VALUE_TYPE_UNION}
     #=Push a list of samples into the outlet.
 
     samples -- A list of samples, either as a list of lists or a list of  
@@ -683,10 +686,11 @@ function push_chunk(self::StreamOutlet, x, timestamp=0.0, pushthrough=True)
             throw(ErrorException(
                 "The API for push_chunk is expecting an N-dimensional Julia Array, not an 'Array of Arrays'"))
         end
+
         # n_values = self.channel_count * length(x)
         # data_buff = (self.value_type * n_values).from_buffer(x) # DRCFIX
         n_values = length(x) # this works well is x is an AbstractArray and 
-        data_buff = Vector{self.value_type}(vec(x))
+        data_buff = Vector{T}(vec(x))
         handle_error(ccall((self.do_push_chunk, LSLBIN),
             Cint, # inferred via https://github.com/sccn/labstreaminglayer/blob/8d032fb43245be0d8598488d2cf783ac36a97831/LSL/liblsl/include/lsl_c.h#L498
             (Ptr{Void}, Ptr{self.value_type}, Clong, Cdouble, Cint),
