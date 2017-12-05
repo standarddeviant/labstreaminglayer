@@ -17,10 +17,10 @@
 # importall OtherLib
 # END JULIA BOILERPLATE CONFIG
 
-const LSLBIN = ""
-function set_lslbin(inp)
-    LSLBIN = inp
-end
+# const LSLBIN = ""
+# function set_lslbin(inp)
+#     LSLBIN = inp
+# end
 # DRCFIX Is there a cleaner way to make a setter for a variable that requires const?
 #        this seems counter-intuitive... do we need const for LSLBIN???
 
@@ -192,28 +192,29 @@ end
 # === Free Functions provided by the lab streaming layer ===
 # ==========================================================
 
+"""Protocol version.
+
+The major version is protocol_version() / 100;
+The minor version is protocol_version() % 100;
+
+Clients with different minor versions are protocol-compatible with each 
+other while clients with different major versions will refuse to work 
+together.
+
+"""
 function protocol_version()
-    #=Protocol version.
-
-    The major version is protocol_version() / 100;
-    The minor version is protocol_version() % 100;
-
-    Clients with different minor versions are protocol-compatible with each 
-    other while clients with different major versions will refuse to work 
-    together.
-
-    =#
     ccall((:lsl_protocol_version, LSLBIN), Cint, ())
 end
 
 
+
+#=Version of the underlying liblsl library.
+
+The major version is library_version() / 100;
+The minor version is library_version() % 100;
+
+=#
 function library_version()
-    #=Version of the underlying liblsl library.
-
-    The major version is library_version() / 100;
-    The minor version is library_version() % 100;
-
-    =#
     ccall((:lsl_library_version, LSLBIN), Cint, ())
 end
 
@@ -582,7 +583,7 @@ function StreamOutlet{T}(info, chunk_size=0, max_buffered=360) where {T<:LSL_VAL
     obj = Ptr{Void}(ccall((:lsl_create_outlet, LSLBIN), 
             Ptr{Void},
             (Ptr{Void}, Cint, Cint),
-            info.obj, chunk_size, max_buffered
+            info.obj, Cint(chunk_size), Cint(max_buffered)
     ))
     if obj == C_NULL
         throw(ErrorException("could not create stream outlet, obj==C_NULL"))
@@ -693,7 +694,7 @@ function push_chunk(self::StreamOutlet{T}, x::AbstractArray,
         data_buff = Vector{T}(vec(x))
         handle_error(ccall((self.do_push_chunk, LSLBIN),
             Cint, # inferred via https://github.com/sccn/labstreaminglayer/blob/8d032fb43245be0d8598488d2cf783ac36a97831/LSL/liblsl/include/lsl_c.h#L498
-            (Ptr{Void}, Ptr{self.value_type}, Clong, Cdouble, Cint),
+            (Ptr{Void}, Ptr{T}, Clong, Cdouble, Cint),
             self.obj, data_buff, Clong(n_values), Cdouble(timestamp), Cint(pushthrough)
         ))
     catch TypeError TE
@@ -733,7 +734,7 @@ function have_consumers(self::StreamOutlet)
     =#
     # return bool(lib.lsl_have_consumers(self.obj))
     # return type (Cint) inferred via https://github.com/sccn/labstreaminglayer/blob/master/LSL/liblsl/include/lsl_c.h#L586
-    ccall((:lsl_have_consumers, LSLBIN), Cint, (Ptr{Void}, ), self.obj)
+    ccall((:lsl_have_consumers, LSLBIN), Cint, (Ptr{Void},), self.obj)
 end
     
 function wait_for_consumers(self::StreamOutlet, timeout)
@@ -820,7 +821,7 @@ function resolve_byprop(prop, value, minimum=1, timeout=FOREVER)
     num_found = ccall((:lsl_resolve_byprop, LSLBIN), 
         Cint, 
         (Ptr{Ptr{Void}}, Cint, Cstring, Cstring, Cint, Cdouble),
-        pointer(buffer), Cint(1024), prop, value, minimum, Cdouble(wait_time)
+        pointer(buffer), Cint(1024), prop, value, Cint(minimum), Cdouble(wait_time)
     )
     [StreamInfo(handle=buffer[k]) for k in range(1,num_found)]
 end
@@ -855,8 +856,8 @@ function resolve_bypred(predicate, minimum=1, timeout=FOREVER)
     #                                    c_double(timeout))
     num_found = ccall((:lsl_resolve_byprop, LSLBIN), 
         Cint, 
-        (Ptr{Ptr{Void}}, Cint, Cstring, Cstring, Cint, Cdouble),
-        pointer(buffer), Cint(1024), predicate, minimum, Cdouble(wait_time)
+        (Ptr{Ptr{Void}}, Cuint, Cstring, Cint, Cdouble),
+        pointer(buffer), Cuint(1024), predicate, Cint(minimum), Cdouble(wait_time)
     )
     return [StreamInfo(handle=buffer[k]) for k in range(1,num_found)]
 end
@@ -868,7 +869,7 @@ end
 function free_char_p_array_memory(char_p_array,num_elements)
     pointers = Ptr{Void}.(char_p_array) # the dot syntax for vectorizing functions
     for p in range(1,num_elements)
-        if pointers[p] != nothing:  # only free initialized pointers
+        if pointers[p] != nothing # only free initialized pointers
             # lib.lsl_destroy_string(pointers[p])
             ccall((:lsl_destroy_string, LSLBIN), Void, (Ptr{Void},), pointers[p] )
         end
@@ -879,7 +880,7 @@ end
 # === Stream Inlet ===
 # ====================
     
-mutable struct StreamInlet
+mutable struct StreamInlet{T<:LSL_VALUE_TYPE_UNION}
     #=A stream inlet.
 
     Inlets are used to receive streaming data (and meta-data) from the lab 
@@ -897,7 +898,8 @@ mutable struct StreamInlet
     buffers        # {}
 end
     
-function StreamInlet(info, max_buflen=360, max_chunklen=0, recover=True, processing_flags=0)
+function StreamInlet{T}(info, max_buflen=360, max_chunklen=0, 
+        recover=True, processing_flags=0) where {T<:LSL_VALUE_TYPE_UNION}
     #=Construct a new stream inlet from a resolved stream description.
     
     Keyword arguments:
@@ -929,13 +931,12 @@ function StreamInlet(info, max_buflen=360, max_chunklen=0, recover=True, process
                 lost (e.g., due to an app or computer crash). (default True)
 
     =#
-    if typeof(info) <: AbstractArray:
-        throw(ErrorException(
-            "description needs to be of type StreamInfo, got a list.")
+    if typeof(info) <: AbstractArray
+        error("description needs to be of type StreamInfo, got a list.")
     end
     obj = ccall((:lsl_create_inlet, LSLBIN),
         Ptr{Void},
-        (Ptr{Void}, Cint, Cint, Cint)
+        (Ptr{Void}, Cint, Cint, Cint),
         info.obj, Cint(max_buflen), Cint(max_chunklen), Cint(recover)
     )
     obj = Ptr{Void}(obj)
@@ -953,10 +954,10 @@ function StreamInlet(info, max_buflen=360, max_chunklen=0, recover=True, process
     channel_count  = info.channel_count()
     do_pull_sample = fmt2pull_sample[channel_format]
     do_pull_chunk  = fmt2pull_chunk[channel_format]
-    value_type     = fmt2type[channel_format]
+    # value_type     = fmt2type[channel_format]
     # DRCNOTE, we can't use ctypes trick of multiplying basic type...
     # DRCNOTE, so value_type == sample_type, keeping both for now
-    sample_type    = value_type
+    # sample_type    = value_type
     sample         = Vector{value_type}(channel_count) # A buffer for a single sample for each channel
     buffers        = Dict() # DRCNOTE, this was a dictionary in python impl, copying that logic for now
     StreamInfo(
@@ -1045,7 +1046,7 @@ function close_stream(self::StreamInlet)
 
     =#
     # lib.lsl_close_stream(self.obj)
-    ccall((:lsl_close_stream, LSLBIN), Void, (Ptr{Void},) self.obj)
+    ccall((:lsl_close_stream, LSLBIN), Void, (Ptr{Void},), self.obj)
 end
 
 function time_correction(self::StreamInlet, timeout=FOREVER)
@@ -1081,7 +1082,8 @@ function time_correction(self::StreamInlet, timeout=FOREVER)
     result
 end
     
-function pull_sample(self::StreamInlet, timeout=FOREVER, sample=nothing)
+function pull_sample(self::StreamInlet{T}, timeout=FOREVER, 
+        sample=nothing) where {T<:LSL_VALUE_TYPE_UNION}
     #=Pull a sample from the inlet and return it.
     
     Keyword arguments:
@@ -1118,8 +1120,8 @@ function pull_sample(self::StreamInlet, timeout=FOREVER, sample=nothing)
     # DRCNOTE, for holding self.channel_count values of type self.value_type
     timestamp = ccall((self.do_pull_sample, LSLBIN),
         Cdouble,
-        (Ptr{Void}, Ptr{self.value_type}, Cint, Cdouble, Ptr{Cint}),
-        self.obj, pointer(self.sample), Cint(self.channel_count), 
+        (Ptr{Void}, Ptr{T}, Cint, Cdouble, Ptr{Cint}),
+        self.obj, pointer(self.sample_buf), Cint(self.channel_count), 
             Cdouble(timeout), pointer(errcode)
     )
     handle_error(errcode)
@@ -1140,7 +1142,8 @@ function pull_sample(self::StreamInlet, timeout=FOREVER, sample=nothing)
     end
 end
     
-function pull_chunk(self::StreamInlet, timeout=0.0, max_samples=1024, dest_obj=nothing)
+function pull_chunk(self::StreamInlet{T}, timeout=0.0, 
+        max_samples=1024, dest_obj=nothing) where {T<:LSL_VALUE_TYPE_UNION}
     #=Pull a chunk of samples from the inlet.
     
     Keyword arguments:
@@ -1169,13 +1172,13 @@ function pull_chunk(self::StreamInlet, timeout=0.0, max_samples=1024, dest_obj=n
     num_channels = self.channel_count
     max_values = max_samples * num_channels
 
-    if max_samples not in keys(self.buffers):
+    if max_samples not in keys(self.buffers)
         # noinspection PyCallingNonCallable
         # self.buffers[max_samples] = ((self.value_type*max_values)(),
         #                                 (c_double*max_samples)())
         # DRCNOTE constructing 2-element Tuple here
         self.buffers[max_samples] = (
-            Vector{self.value_type}(max_values), 
+            Vector{T}(max_values), 
             Vector{Cdouble}(max_samples)
         )
     end
@@ -1196,7 +1199,7 @@ function pull_chunk(self::StreamInlet, timeout=0.0, max_samples=1024, dest_obj=n
     #                                     byref(errcode))
     num_elements = ccall((self.do_pull_chunk, LSLBIN),
         Culong,
-        (Ptr{Void}, Ptr{self.value_type}, Ptr{Cdouble}, 
+        (Ptr{Void}, Ptr{T}, Ptr{Cdouble}, 
             Cint, Cint, Cdouble, Ptr{Cint} ),
         self.obj, pointer(data_buff), pointer(ts_buff),
             Cint(max_values), Cint(max_values), Cdouble(timeout), pointer(errcode)
@@ -1235,7 +1238,7 @@ function samples_available(self::StreamInlet)
 
     =#
     # return lib.lsl_samples_available(self.obj)
-    ccall((:lsl_samples_available, LSLBIN), Cuint, (Ptr{Void,}), self.obj )
+    ccall((:lsl_samples_available, LSLBIN), Cuint, (Ptr{Void},), self.obj )
 end
     
 function was_clock_reset(self::StreamInlet)
@@ -1272,38 +1275,38 @@ mutable struct XMLElement
     e # DRCFIX - force this to be Ptr{Void} at the struct level?
 end
 
-function XMLElement(handle):
+function XMLElement(handle)
     #=Construct new XML element from existing handle.=#
     XMLElement(Ptr{Void}(handle))
 end
 
 # === Tree Navigation ===
 
-function first_child(self::XMLElement):
+function first_child(self::XMLElement)
     #=Get the first child of the element.=#
     # return XMLElement(lib.lsl_first_child(self.e))
-    XMLElement(ccall((:lsl_first_child, LSLBIN), Ptr{Void}, (Ptr{Void},) self.e))
+    XMLElement(ccall((:lsl_first_child, LSLBIN), Ptr{Void}, (Ptr{Void},), self.e))
 end
 
-function last_child(self::XMLElement):
+function last_child(self::XMLElement)
     #=Get the last child of the element.=#
     # return XMLElement(lib.lsl_last_child(self.e))
-    XMLElement(ccall((:lsl_last_child, LSLBIN), Ptr{Void}, (Ptr{Void},) self.e))
+    XMLElement(ccall((:lsl_last_child, LSLBIN), Ptr{Void}, (Ptr{Void},), self.e))
 end
 
-function child(self::XMLElement, name):
+function child(self::XMLElement, name)
     #=Get a child with a specified name.=#
     # return XMLElement(lib.lsl_child(self.e, str.encode(name)))
-    XMLElement(ccall((:lsl_child, LSLBIN), Ptr{Void}, (Ptr{Void},Cstring) self.e, name))
+    XMLElement(ccall((:lsl_child, LSLBIN), Ptr{Void}, (Ptr{Void},Cstring), self.e, name))
 end
 
-function next_sibling(self::XMLElement, name=nothing):
+function next_sibling(self::XMLElement, name=nothing)
     #=Get the next sibling in the children list of the parent node.
 
     If a name is provided, the next sibling with the given name is returned.
 
     =#
-    if name == nothing:
+    if name == nothing
         return XMLElement(ccall((:lsl_next_sibling, LSLBIN), 
             Ptr{Void},
             (Ptr{Void},),
@@ -1318,7 +1321,7 @@ function next_sibling(self::XMLElement, name=nothing):
     end
 end
 
-function previous_sibling(self::XMLElement, name=nothing):
+function previous_sibling(self::XMLElement, name=nothing)
     #=Get the previous sibling in the children list of the parent node.
 
     If a name is provided, the previous sibling with the given name is
@@ -1328,7 +1331,7 @@ function previous_sibling(self::XMLElement, name=nothing):
     if name == nothing
         return XMLElement(call((:lsl_previous_sibling, LSLBIN),
             Ptr{Void},
-            (Ptr{Void}, )
+            (Ptr{Void},),
             self.e
         ))
     else
@@ -1349,7 +1352,7 @@ end
 
 function empty(self::XMLElement)
     #=Whether this node is empty.=#
-    Bool(ccall((:lsl_empty, LSLBIN), Cint, (Ptr{void},), self.e))
+    Bool(ccall((:lsl_empty, LSLBIN), Cint, (Ptr{Void},), self.e))
 end
 
 function is_text(self::XMLElement)
@@ -1439,7 +1442,7 @@ function append_child(self::XMLElement, name)
     #=Append a child element with the specified name.=#
     XMLElement(ccall((:lsl_append_child, LSLBIN), 
         Ptr{Void}, 
-        (Ptr{Void}, Cstring)
+        (Ptr{Void}, Cstring),
         self.e, "$(name)"
     ))
 end
@@ -1457,7 +1460,7 @@ function append_copy(self::XMLElement, elem::XMLElement)
     #=Append a copy of the specified element as a child.=#
     XMLElement(ccall((:lsl_append_copy, LSLBIN),
         Ptr{Void},
-        (Ptr{Void}, Ptr{Void})
+        (Ptr{Void}, Ptr{Void}),
         self.e, elem.e
     ))
 end
@@ -1530,7 +1533,7 @@ function ContinuousResolver(prop=nothing, value=nothing, pred=nothing, forget_af
     else
         obj = ccall((:lsl_create_continuous_resolver, LSLBIN),
             Ptr{Void},
-            (Cdouble,)
+            (Cdouble,),
             Cdouble(forget_after)
         )
     end
@@ -1593,7 +1596,7 @@ end
 #     pass
 
 
-function handle_error(errcode):
+function handle_error(errcode)
     #=Error handler function. Translates an error code into an exception.=#
     # if typeof(errcode) is c_int:
     #     errcode = errcode.value
@@ -1631,7 +1634,6 @@ end
 function resolve_stream(args...)
     if length(args) == 0
         return resolve_streams()
-    end
     elseif typeof(args[1]) <: Union{Int, AbstractFloat}
         return resolve_streams(args[1])
     elseif typeof(args[1]) <: AbstractString
