@@ -118,27 +118,27 @@ const FOREVER = 32000000.0
 # For up to 24-bit precision measurements in the appropriate physical unit (
 # e.g., microvolts). Integers from -16777216 to 16777216 are represented
 # accurately.
-const cf_float32 = 1
+const cf_float32 = 2
 # For universal numeric data as long as permitted by network and disk budget.
 #  The largest representable integer is 53-bit.
-const cf_double64 = 2
+const cf_double64 = 3
 # For variable-length ASCII strings or data blobs, such as video frames,
 # complex event descriptions, etc.
-const cf_string = 3
+const cf_string = 4
 # For high-rate digitized formats that require 32-bit precision. Depends
 # critically on meta-data to represent meaningful units. Useful for
 # application event codes or other coded data.
-const cf_int32 = 4
+const cf_int32 = 5
 # For very high bandwidth signals or CD quality audio (for professional audio
 #  float is recommended).
-const cf_int16 = 5
+const cf_int16 = 6
 # For binary signals or other coded data.
-const cf_int8 = 6
+const cf_int8 = 7
 # For now only for future compatibility. Support for this type is not
 # available on all languages and platforms.
-const cf_int64 = 7
+const cf_int64 = 8
 # Can not be transmitted.
-const cf_undefined = 0
+const cf_undefined = 1
 
 # Post processing flags
 const proc_none = 0
