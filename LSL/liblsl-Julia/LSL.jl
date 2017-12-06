@@ -1001,7 +1001,7 @@ Throws a TimeoutError (if the timeout expires), or LostError (if the
 stream source has been lost).
 
 """
-function info(self::StreamInlet, timeout=FOREVER)
+function fullinfo(self::StreamInlet, timeout=FOREVER)
     # errcode = c_int()
     errcode = Cint(0)
     # result = lib.lsl_get_fullinfo(self.obj, c_double(timeout),
