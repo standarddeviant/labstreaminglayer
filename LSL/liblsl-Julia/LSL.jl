@@ -660,7 +660,7 @@ Keyword arguments:
 
 """
 function push_sample(self::StreamOutlet{T}, x::AbstractArray, 
-        timestamp=0.0, pushthrough=True) where {T<:LSL_VALUE_TYPE_UNION}
+        timestamp=0.0, pushthrough=true) where {T<:LSL_VALUE_TYPE_UNION}
     if length(x) == self.channel_count
         # DRCFIX - is this needed for julia????
         # if self.channel_format == cf_string 
@@ -677,8 +677,7 @@ function push_sample(self::StreamOutlet{T}, x::AbstractArray,
             self.obj, pointer(tmpx), Cdouble(timestamp), Cint(pushthrough)
         ))
     else
-        throw(ErrorException(
-            "length of the data must correspond to the stream's channel count."))
+        error("length of the data must correspond to the stream's channel count.")
     end
 end
 
@@ -698,7 +697,7 @@ end
 
 """
 function push_chunk(self::StreamOutlet{T}, x::AbstractArray, 
-        timestamp=0.0, pushthrough=True) where {T<:LSL_VALUE_TYPE_UNION}
+        timestamp=0.0, pushthrough=true) where {T<:LSL_VALUE_TYPE_UNION}
     try
         if typeof(x[1]) <: AbstractArray
             # DRCNOTE - is there a good enough reason to accept "list of lists" and not just N-dimensional arrays?
@@ -953,7 +952,7 @@ Keyword arguments:
 
 """
 function StreamInlet{T}(info, max_buflen=360, max_chunklen=0, 
-        recover=True, processing_flags=0) where {T<:LSL_VALUE_TYPE_UNION}
+        recover=true, processing_flags=0) where {T<:LSL_VALUE_TYPE_UNION}
     if typeof(info) <: AbstractArray
         error("description needs to be of type StreamInfo, got a list.")
     end
