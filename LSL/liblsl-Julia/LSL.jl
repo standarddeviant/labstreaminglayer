@@ -118,27 +118,27 @@ const FOREVER = 32000000.0
 # For up to 24-bit precision measurements in the appropriate physical unit (
 # e.g., microvolts). Integers from -16777216 to 16777216 are represented
 # accurately.
-const cf_float32 = 2
+const cf_float32 = 1
 # For universal numeric data as long as permitted by network and disk budget.
 #  The largest representable integer is 53-bit.
-const cf_double64 = 3
+const cf_double64 = 2
 # For variable-length ASCII strings or data blobs, such as video frames,
 # complex event descriptions, etc.
-const cf_string = 4
+const cf_string = 3
 # For high-rate digitized formats that require 32-bit precision. Depends
 # critically on meta-data to represent meaningful units. Useful for
 # application event codes or other coded data.
-const cf_int32 = 5
+const cf_int32 = 4
 # For very high bandwidth signals or CD quality audio (for professional audio
 #  float is recommended).
-const cf_int16 = 6
+const cf_int16 = 5
 # For binary signals or other coded data.
-const cf_int8 = 7
+const cf_int8 = 6
 # For now only for future compatibility. Support for this type is not
 # available on all languages and platforms.
-const cf_int64 = 8
+const cf_int64 = 7
 # Can not be transmitted.
-const cf_undefined = 1
+const cf_undefined = 0
 
 # Post processing flags
 const proc_none = 0
@@ -190,6 +190,7 @@ catch
     fmt2pull_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
 end
 
+# cf_xxx integers have to be zero-based for C-interface, but these 
 
 
 # ==========================================================
@@ -302,6 +303,15 @@ Keyword arguments:
 function StreamInfo(name="untitled", type_="", channel_count=1,
                 nominal_srate=IRREGULAR_RATE, channel_format=cf_float32,
                 source_id="", handle=nothing)
+    
+    @show name
+    @show type_
+    @show Cint(channel_count)
+    @show Cdouble(nominal_srate)
+    @show Cint(channel_format)
+    @show source_id
+    @show handle
+
     if handle != nothing
         obj = Ptr{Void}(handle)
     else
@@ -309,19 +319,26 @@ function StreamInfo(name="untitled", type_="", channel_count=1,
         if isa(channel_format, AbstractString)
             channel_format = string2fmt[channel_format]
         end
-
         # self.obj = lib.lsl_create_streaminfo(c_char_p(str.encode(name)),
         #                                         c_char_p(str.encode(type)),
         #                                         channel_count,
         #                                         c_double(nominal_srate),
         #                                         channel_format,
         #                                         c_char_p(str.encode(source_id)))
+        # extern LIBLSL_C_API lsl_streaminfo lsl_create_streaminfo(
+                # char *name, 
+                # char *type, 
+                # int channel_count, 
+                # double nominal_srate, 
+                # lsl_channel_format_t channel_format, 
+                # char *source_id);
         obj = ccall((:lsl_create_streaminfo, LSLBIN), 
             Ptr{Void}, 
-            (Cstring, Cstring, Cint, Cdouble, Cint, Cstring), 
-            name, type_, Cint(channel_count), Cdouble(nominal_srate), Cint(channel_count), source_id
+            (Cstring, Cstring, Cshort, Cdouble, Cint, Cstring), 
+            pointer(name), pointer(type_), Cshort(channel_count), Cdouble(nominal_srate), 
+                Cint(channel_format), pointer(source_id)
         )
-
+        # pointer(name), pointer(type_), Cshort(channel_count), Cdouble(nominal_srate), 
         obj = Ptr{Void}(obj)
         if obj == C_NULL
             error("could not create stream description object.") #raise RuntimeError
@@ -517,7 +534,7 @@ applications.
 
 """
 function desc(self::StreamInfo)
-    return XMLElement(ccall((:lsl_get_desc, LSLBIN),
+    XMLElement(ccall((:lsl_get_desc, LSLBIN),
         Ptr{Void},
         (Ptr{Void},),
         self.obj
@@ -596,8 +613,8 @@ function StreamOutlet{T}(info, chunk_size=0, max_buffered=360) where {T<:LSL_VAL
     end
     channel_count  = info.channel_count()
     channel_format = info.channel_format()
-    do_push_sample = fmt2push_sample[self.channel_format]
-    do_push_chunk  = fmt2push_chunk[self.channel_format]
+    do_push_sample = fmt2push_sample[self.channel_format+1]
+    do_push_chunk  = fmt2push_chunk[self.channel_format+1]
     # value_type     = fmt2type[self.channel_format]
     # sample_type    = fmt2type[self.channel_format] * channel_count # DRCFIX, can't use ctypes trick...
     StreamOutlet(
@@ -958,8 +975,8 @@ function StreamInlet{T}(info, max_buflen=360, max_chunklen=0,
     
     channel_format = info.channel_format()
     channel_count  = info.channel_count()
-    do_pull_sample = fmt2pull_sample[channel_format]
-    do_pull_chunk  = fmt2pull_chunk[channel_format]
+    do_pull_sample = fmt2pull_sample[channel_format+1]
+    do_pull_chunk  = fmt2pull_chunk[channel_format+1]
     # value_type     = fmt2type[channel_format]
     # DRCNOTE, we can't use ctypes trick of multiplying basic type...
     # DRCNOTE, so value_type == sample_type, keeping both for now
