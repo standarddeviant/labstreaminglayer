@@ -177,18 +177,18 @@ fmt2pull_sample = [[], :lsl_pull_sample_f, :lsl_pull_sample_d,
     :lsl_pull_sample_str, :lsl_pull_sample_i,
     :lsl_pull_sample_s, :lsl_pull_sample_c, []]
 
-try
+# try
 fmt2push_chunk = [[], :lsl_push_chunk_ftp, :lsl_push_chunk_dtp,
     :lsl_push_chunk_strtp, :lsl_push_chunk_itp,
     :lsl_push_chunk_stp, :lsl_push_chunk_ctp, []]
 fmt2pull_chunk = [[], :lsl_pull_chunk_f, :lsl_pull_chunk_d,
     :lsl_pull_chunk_str, :lsl_pull_chunk_i,
     :lsl_pull_chunk_s, :lsl_pull_chunk_c, []]
-catch
-    # if not available
-    fmt2push_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
-    fmt2pull_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
-end
+# catch
+#     # if not available
+#     fmt2push_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
+#     fmt2pull_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
+# end
 
 # cf_xxx integers have to be zero-based for C-interface, but these 
 
@@ -602,7 +602,7 @@ Keyword arguments:
                 (default 360)
 
 """
-function StreamOutlet{T}(info, chunk_size=0, max_buffered=360) where {T<:LSL_VALUE_TYPE_UNION}
+function StreamOutlet(info::StreamInfo, chunk_size=0, max_buffered=360) #where {T<:LSL_VALUE_TYPE_UNION}
     obj = Ptr{Void}(ccall((:lsl_create_outlet, LSLBIN), 
             Ptr{Void},
             (Ptr{Void}, Cint, Cint),
@@ -611,18 +611,18 @@ function StreamOutlet{T}(info, chunk_size=0, max_buffered=360) where {T<:LSL_VAL
     if obj == C_NULL
         throw(ErrorException("could not create stream outlet, obj==C_NULL"))
     end
-    channel_count  = info.channel_count()
-    channel_format = info.channel_format()
-    do_push_sample = fmt2push_sample[self.channel_format+1]
-    do_push_chunk  = fmt2push_chunk[self.channel_format+1]
+    channel_count_  = channel_count(info)
+    channel_format_ = channel_format(info)
+    do_push_sample_ = fmt2push_sample[channel_format_+1]
+    do_push_chunk_  = fmt2push_chunk[channel_format_+1]
     # value_type     = fmt2type[self.channel_format]
     # sample_type    = fmt2type[self.channel_format] * channel_count # DRCFIX, can't use ctypes trick...
-    StreamOutlet(
+    StreamOutlet{fmt2type[channel_format_+1]}(
         obj, 
-        channel_format,
-        channel_count,
-        do_push_sample,
-        do_push_chunk,
+        channel_format_,
+        channel_count_,
+        do_push_sample_,
+        do_push_chunk_,
         # value_type,
         # sample_type
     )
@@ -1295,7 +1295,7 @@ additional documentation.
 
 """
 mutable struct XMLElement
-    e # DRCFIX - force this to be Ptr{Void} at the struct level?
+    e::Ptr{Void} # DRCFIX - force this to be Ptr{Void} at the struct level?
 end
 
 """Construct new XML element from existing handle."""
