@@ -1142,8 +1142,8 @@ the timeout expires, no TimeoutError is thrown (because this case is
 not considered an error).
 
 """
-function pull_sample(self::StreamInlet{T}, timeout=FOREVER, 
-        sample=nothing) where {T<:LSL_VALUE_TYPE_UNION}    
+function pull_sample(self::StreamInlet{T, PS, PC}, timeout=FOREVER, 
+        sample=nothing) where {T<:LSL_VALUE_TYPE_UNION, PS, PC}
     # support for the legacy API
     # DRCFIX - does legacy api of "pull_sample" need to be supported???
     assign_to = nothing
@@ -1153,13 +1153,13 @@ function pull_sample(self::StreamInlet{T}, timeout=FOREVER,
     # else:
     #     assign_to = nothing
             
-    errcode = Cint(0) # c_int()
+    errcode = Vector{Cint}(1); errcode[1]=0; # c_int()
     # timestamp = self.do_pull_sample(self.obj, byref(self.sample),
     #                                 self.channel_count, c_double(timeout),
     #                                 byref(errcode))
     # DRCNOTE, "self.sample" above is a C-compatiable buffer 
     # DRCNOTE, for holding self.channel_count values of type self.value_type
-    timestamp = ccall((self.do_pull_sample, LSLBIN),
+    timestamp = ccall((PS, LSLBIN),
         Cdouble,
         (Ptr{Void}, Ptr{T}, Cint, Cdouble, Ptr{Cint}),
         self.obj, pointer(self.sample_buf), Cint(self.channel_count), 
@@ -1207,8 +1207,8 @@ Returns a tuple (samples,timestamps) where samples is a list of samples
 Throws a LostError if the stream source has been lost.
 
 """
-function pull_chunk(self::StreamInlet{T}, timeout=0.0, 
-    max_samples=1024, dest_obj=nothing) where {T<:LSL_VALUE_TYPE_UNION}
+function pull_chunk(self::StreamInlet{T, PS, PC}, timeout=0.0, 
+    max_samples=1024, dest_obj=nothing) where {T<:LSL_VALUE_TYPE_UNION, PS, PC}
     # look up a pre-allocated buffer of appropriate length        
     num_channels = self.channel_count
     max_values = max_samples * num_channels
@@ -1231,21 +1231,25 @@ function pull_chunk(self::StreamInlet{T}, timeout=0.0,
     end
     ts_buff = self.buffers[max_samples][2] # DRCNOTE changed idx from 1 to 2 b/c Python to Julia
 
-    # read data into it
-    errcode = Cint(0) # c_int()
+
+    # it's a bit silly that pointer(Cint(0)) fails, so we have to do this silliness :-\
+    errcode = Vector{Cint}(1)
+    # c_int()
     # noinspection PyCallingNonCallable
     # num_elements = self.do_pull_chunk(self.obj, byref(data_buff),
     #                                     byref(ts_buff), max_values,
     #                                     max_samples, c_double(timeout),
     #                                     byref(errcode))
-    num_elements = ccall((self.do_pull_chunk, LSLBIN),
+    
+    # read data into it
+    num_elements = ccall((PC, LSLBIN),
         Culong,
         (Ptr{Void}, Ptr{T}, Ptr{Cdouble}, 
             Cint, Cint, Cdouble, Ptr{Cint} ),
         self.obj, pointer(data_buff), pointer(ts_buff),
             Cint(max_values), Cint(max_values), Cdouble(timeout), pointer(errcode)
     )
-    handle_error(errcode)
+    handle_error(errcode[1])
     # return results (note: could offer a more efficient format in the 
     # future, e.g., a numpy array)
     num_samples = num_elements/num_channels
