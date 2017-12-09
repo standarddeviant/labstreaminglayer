@@ -173,17 +173,24 @@ LSL_VALUE_TYPE_UNION = Union{fmt2type[2:end]...}
 fmt2push_sample = [[], :lsl_push_sample_ftp, :lsl_push_sample_dtp,
     :lsl_push_sample_strtp, :lsl_push_sample_itp,
     :lsl_push_sample_stp, :lsl_push_sample_ctp, []]
+# LSL_PUSH_SAMP_TYPE_UNION = fmt2push_sample[2:end-1]
+
 fmt2pull_sample = [[], :lsl_pull_sample_f, :lsl_pull_sample_d,
     :lsl_pull_sample_str, :lsl_pull_sample_i,
     :lsl_pull_sample_s, :lsl_pull_sample_c, []]
+# LSL_PULL_SAMP_TYPE_UNION = fmt2pull_sample[2:end-1]
 
 # try
 fmt2push_chunk = [[], :lsl_push_chunk_ftp, :lsl_push_chunk_dtp,
     :lsl_push_chunk_strtp, :lsl_push_chunk_itp,
     :lsl_push_chunk_stp, :lsl_push_chunk_ctp, []]
+# LSL_PUSH_CHUNK_TYPE_UNION = fmt2push_chunk[2:end-1]
+
 fmt2pull_chunk = [[], :lsl_pull_chunk_f, :lsl_pull_chunk_d,
     :lsl_pull_chunk_str, :lsl_pull_chunk_i,
     :lsl_pull_chunk_s, :lsl_pull_chunk_c, []]
+# LSL_PULL_CHUNK_TYPE_UNION = fmt2pull_chunk[2:end-1]
+
 # catch
 #     # if not available
 #     fmt2push_chunk = [nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing]
@@ -302,50 +309,54 @@ Keyword arguments:
 """
 function StreamInfo(name="untitled", type_="", channel_count=1,
                 nominal_srate=IRREGULAR_RATE, channel_format=cf_float32,
-                source_id="", handle=nothing)
+                source_id=""; handle=nothing)
     
-    @show name
-    @show type_
-    @show Cint(channel_count)
-    @show Cdouble(nominal_srate)
-    @show Cint(channel_format)
-    @show source_id
-    @show handle
+    # @show name
+    # @show type_
+    # @show Cint(channel_count)
+    # @show Cdouble(nominal_srate)
+    # @show Cint(channel_format)
+    # @show source_id
+    # @show handle
 
-    if handle != nothing
-        obj = Ptr{Void}(handle)
-    else
-        # DRCFIX DOES str2fmt NEED TO BE ABOVE???
-        if isa(channel_format, AbstractString)
-            channel_format = string2fmt[channel_format]
-        end
-        # self.obj = lib.lsl_create_streaminfo(c_char_p(str.encode(name)),
-        #                                         c_char_p(str.encode(type)),
-        #                                         channel_count,
-        #                                         c_double(nominal_srate),
-        #                                         channel_format,
-        #                                         c_char_p(str.encode(source_id)))
-        # extern LIBLSL_C_API lsl_streaminfo lsl_create_streaminfo(
-                # char *name, 
-                # char *type, 
-                # int channel_count, 
-                # double nominal_srate, 
-                # lsl_channel_format_t channel_format, 
-                # char *source_id);
-        obj = ccall((:lsl_create_streaminfo, LSLBIN), 
-            Ptr{Void}, 
-            (Cstring, Cstring, Cshort, Cdouble, Cint, Cstring), 
-            pointer(name), pointer(type_), Cshort(channel_count), Cdouble(nominal_srate), 
-                Cint(channel_format), pointer(source_id)
-        )
-        # pointer(name), pointer(type_), Cshort(channel_count), Cdouble(nominal_srate), 
-        obj = Ptr{Void}(obj)
-        if obj == C_NULL
-            error("could not create stream description object.") #raise RuntimeError
-        end
+    # DRCFIX DOES str2fmt NEED TO BE ABOVE???
+    if isa(channel_format, AbstractString)
+        channel_format = string2fmt[channel_format]
+    end
+    # self.obj = lib.lsl_create_streaminfo(c_char_p(str.encode(name)),
+    #                                         c_char_p(str.encode(type)),
+    #                                         channel_count,
+    #                                         c_double(nominal_srate),
+    #                                         channel_format,
+    #                                         c_char_p(str.encode(source_id)))
+    # extern LIBLSL_C_API lsl_streaminfo lsl_create_streaminfo(
+            # char *name, 
+            # char *type, 
+            # int channel_count, 
+            # double nominal_srate, 
+            # lsl_channel_format_t channel_format, 
+            # char *source_id);
+    obj = ccall((:lsl_create_streaminfo, LSLBIN), 
+        Ptr{Void}, 
+        (Cstring, Cstring, Cshort, Cdouble, Cint, Cstring), 
+        pointer(name), pointer(type_), Cshort(channel_count), Cdouble(nominal_srate), 
+            Cint(channel_format), pointer(source_id)
+    )
+    # pointer(name), pointer(type_), Cshort(channel_count), Cdouble(nominal_srate), 
+    obj = Ptr{Void}(obj)
+    if obj == C_NULL
+        error("could not create stream description object.") #raise RuntimeError
     end
     StreamInfo(obj)
 end # function StreamInfo
+
+# function StreamInfo(;handle=nothing)
+#     obj = Ptr{Void}()
+#     if obj == C_NULL
+#         error("could not create stream description object.") #raise RuntimeError
+#     end
+#     StreamInfo(obj)
+# end
 
 # DRCFIX - convert to finalizer to free memory, read up on Julia best practice for other C-wrappers
 # DRCFIX - look @ https://discourse.julialang.org/t/properly-using-finalizer-ccall-cconvert-and-unsafe-convert/6183/6
@@ -574,13 +585,14 @@ Outlets are used to make streaming data (and the meta-data) available on
 the lab network.
 
 """
-mutable struct StreamOutlet{T<:LSL_VALUE_TYPE_UNION}
+# mutable struct StreamOutlet{T<:LSL_VALUE_TYPE_UNION, PS::Symbol, PC::Symbol}
+mutable struct StreamOutlet{T, PS, PC}
     obj::Ptr{Void}
     # DRCFIX what are the types of these vars?
-    channel_format # = info.channel_format()                  # Cint
-    channel_count  # = info.channel_count()                   # Cint
-    do_push_sample # = fmt2push_sample[self.channel_format]   # Julia func (currently)
-    do_push_chunk  # = fmt2push_chunk[self.channel_format]    # Julia func (currently)
+    channel_format_ # = info.channel_format()                  # Cint
+    channel_count_  # = info.channel_count()                   # Cint
+    # do_push_sample # = fmt2push_sample[self.channel_format]   # Julia func (currently)
+    # do_push_chunk  # = fmt2push_chunk[self.channel_format]    # Julia func (currently)
     # value_type     # = fmt2type[self.channel_format]          # [ Cfloat | Cint | etc. ]
     # sample_type    # = self.value_type*self.channel_count     # 
 end
@@ -602,27 +614,27 @@ Keyword arguments:
                 (default 360)
 
 """
-function StreamOutlet(info::StreamInfo, chunk_size=0, max_buffered=360) #where {T<:LSL_VALUE_TYPE_UNION}
+function StreamOutlet(info_::StreamInfo, chunk_size=0, max_buffered=360)
     obj = Ptr{Void}(ccall((:lsl_create_outlet, LSLBIN), 
             Ptr{Void},
             (Ptr{Void}, Cint, Cint),
-            info.obj, Cint(chunk_size), Cint(max_buffered)
+            info_.obj, Cint(chunk_size), Cint(max_buffered)
     ))
     if obj == C_NULL
-        throw(ErrorException("could not create stream outlet, obj==C_NULL"))
+        error("could not create stream outlet, obj==C_NULL")
     end
-    channel_count_  = channel_count(info)
-    channel_format_ = channel_format(info)
-    do_push_sample_ = fmt2push_sample[channel_format_+1]
-    do_push_chunk_  = fmt2push_chunk[channel_format_+1]
+    channel_format_ = channel_format(info_)
+    channel_count_  = channel_count(info_)
+    do_push_sample  = fmt2push_sample[channel_format_+1]
+    do_push_chunk   = fmt2push_chunk[channel_format_+1]
     # value_type     = fmt2type[self.channel_format]
     # sample_type    = fmt2type[self.channel_format] * channel_count # DRCFIX, can't use ctypes trick...
-    StreamOutlet{fmt2type[channel_format_+1]}(
-        obj, 
+    StreamOutlet{fmt2type[channel_format_+1], do_push_sample, do_push_chunk}(
+        obj,
         channel_format_,
         channel_count_,
-        do_push_sample_,
-        do_push_chunk_,
+        # do_push_sample_,
+        # do_push_chunk_,
         # value_type,
         # sample_type
     )
@@ -659,9 +671,9 @@ Keyword arguments:
                 (default True)
 
 """
-function push_sample(self::StreamOutlet{T}, x::AbstractArray, 
-        timestamp=0.0, pushthrough=true) where {T<:LSL_VALUE_TYPE_UNION}
-    if length(x) == self.channel_count
+function push_sample(self::StreamOutlet{T,PS,PC}, x::AbstractArray,
+        timestamp=0.0, pushthrough=true) where {T<:LSL_VALUE_TYPE_UNION, PS, PC}
+    if length(x) == self.channel_count_
         # DRCFIX - is this needed for julia????
         # if self.channel_format == cf_string 
         #     x = [v.encode("utf-8") for v in x]
@@ -670,14 +682,15 @@ function push_sample(self::StreamOutlet{T}, x::AbstractArray,
         # tmpts = Cdouble(timestamp)
         # tmppt = Cint(pushthrough)
         # self.obj, tmpx, tmpts, tmppt
-        value_type = self.value_type
-        handle_error(ccall((self.do_push_sample, LSLBIN),
+        value_type = T #self.value_type
+        handle_error(ccall((PS, LSLBIN),
             Cint, # output type # DRCFIX double check this
             (Ptr{Void}, Ptr{T}, Cdouble, Cint), # input types
-            self.obj, pointer(tmpx), Cdouble(timestamp), Cint(pushthrough)
+            Ptr{Void}(self.obj), tmpx, Cdouble(timestamp), Cint(pushthrough)
         ))
     else
-        error("length of the data must correspond to the stream's channel count.")
+        error("length of the data must correspond to the stream's channel count." * 
+              "length(x) = $(length(x)), self.channel_count_ = $(self.channel_count_)")
     end
 end
 
@@ -696,8 +709,8 @@ end
             precedence over the pushthrough flag. (default True)
 
 """
-function push_chunk(self::StreamOutlet{T}, x::AbstractArray, 
-        timestamp=0.0, pushthrough=true) where {T<:LSL_VALUE_TYPE_UNION}
+function push_chunk(self::StreamOutlet{T,PS,PC}, x::AbstractArray, 
+        timestamp=0.0, pushthrough=true) where {T<:LSL_VALUE_TYPE_UNION, PS<:Symbol, PC<:Symbol}
     try
         if typeof(x[1]) <: AbstractArray
             # DRCNOTE - is there a good enough reason to accept "list of lists" and not just N-dimensional arrays?
@@ -714,7 +727,7 @@ function push_chunk(self::StreamOutlet{T}, x::AbstractArray,
         # data_buff = (self.value_type * n_values).from_buffer(x) # DRCFIX
         n_values = length(x) # this works well is x is an AbstractArray and 
         data_buff = Vector{T}(vec(x))
-        handle_error(ccall((self.do_push_chunk, LSLBIN),
+        handle_error(ccall((PC, LSLBIN),
             Cint, # inferred via https://github.com/sccn/labstreaminglayer/blob/8d032fb43245be0d8598488d2cf783ac36a97831/LSL/liblsl/include/lsl_c.h#L498
             (Ptr{Void}, Ptr{T}, Clong, Cdouble, Cint),
             self.obj, data_buff, Clong(n_values), Cdouble(timestamp), Cint(pushthrough)
@@ -807,6 +820,7 @@ function resolve_streams(wait_time=1.0)
         (Ptr{Ptr{Void}}, Cint, Cdouble),
         pointer(buffer), Cint(1024), Cdouble(wait_time)
     )
+    println("num_found = $(num_found)")
     return [StreamInfo(handle=buffer[k]) for k in range(1,num_found)]
 end
 
@@ -842,7 +856,7 @@ function resolve_byprop(prop, value, minimum=1, timeout=FOREVER)
     num_found = ccall((:lsl_resolve_byprop, LSLBIN), 
         Cint, 
         (Ptr{Ptr{Void}}, Cint, Cstring, Cstring, Cint, Cdouble),
-        pointer(buffer), Cint(1024), prop, value, Cint(minimum), Cdouble(wait_time)
+        pointer(buffer), Cint(1024), prop, value, Cint(minimum), Cdouble(timeout)
     )
     [StreamInfo(handle=buffer[k]) for k in range(1,num_found)]
 end
@@ -907,16 +921,16 @@ Inlets are used to receive streaming data (and meta-data) from the lab
 network.
 
 """
-mutable struct StreamInlet{T<:LSL_VALUE_TYPE_UNION}
+mutable struct StreamInlet{T, PS, PC}
     obj            # c_void_p(self.obj)
     channel_format # info.channel_format()
     channel_count  # info.channel_count()
-    do_pull_sample # fmt2pull_sample[self.channel_format]
-    do_pull_chunk  # fmt2pull_chunk[self.channel_format]
-    value_type     # fmt2type[self.channel_format]
-    sample_type    # self.value_type*self.channel_count
-    sample         # self.sample_type()
-    buffers        # {}
+    # do_pull_sample # fmt2pull_sample[self.channel_format]
+    # do_pull_chunk  # fmt2pull_chunk[self.channel_format]
+    # value_type     # fmt2type[self.channel_format]
+    # sample_type    # self.value_type*self.channel_count
+    sample_buf       # self.sample_type()
+    buffers          # {}
 end
 
 """Construct a new stream inlet from a resolved stream description.
@@ -951,20 +965,20 @@ Keyword arguments:
             lost (e.g., due to an app or computer crash). (default True)
 
 """
-function StreamInlet{T}(info, max_buflen=360, max_chunklen=0, 
-        recover=true, processing_flags=0) where {T<:LSL_VALUE_TYPE_UNION}
-    if typeof(info) <: AbstractArray
+function StreamInlet(info_::StreamInfo ; max_buflen=360, max_chunklen=0, 
+        recover=true, processing_flags=0)
+    if typeof(info_) <: AbstractArray
         error("description needs to be of type StreamInfo, got a list.")
     end
     obj = ccall((:lsl_create_inlet, LSLBIN),
         Ptr{Void},
         (Ptr{Void}, Cint, Cint, Cint),
-        info.obj, Cint(max_buflen), Cint(max_chunklen), Cint(recover)
+        info_.obj, Cint(max_buflen), Cint(max_chunklen), Cint(recover)
     )
     obj = Ptr{Void}(obj)
 
     if obj == C_NULL
-        throw(ErrorException("could not create stream inlet."))
+        error("could not create stream inlet.")
     end
     if processing_flags > 0
         # handle_error(lib.lsl_set_postprocessing(self.obj, processing_flags))
@@ -972,25 +986,30 @@ function StreamInlet{T}(info, max_buflen=360, max_chunklen=0,
             Cint, (Cint,), Cint(processing_flags)))
     end
     
-    channel_format = info.channel_format()
-    channel_count  = info.channel_count()
-    do_pull_sample = fmt2pull_sample[channel_format+1]
-    do_pull_chunk  = fmt2pull_chunk[channel_format+1]
-    # value_type     = fmt2type[channel_format]
+    channel_format_ = channel_format(info_)
+    channel_count_  = channel_count(info_)
+    do_pull_sample = fmt2pull_sample[channel_format_+1]
+    do_pull_chunk  = fmt2pull_chunk[channel_format_+1]
+    value_type     = fmt2type[channel_format_+1]
+    # DRCFIX - do some subtype assertions on value_type and 
+    # DRCFIX - do_pull_sample/do_pull_chunk to avoid red ink???
     # DRCNOTE, we can't use ctypes trick of multiplying basic type...
     # DRCNOTE, so value_type == sample_type, keeping both for now
     # sample_type    = value_type
-    sample         = Vector{value_type}(channel_count) # A buffer for a single sample for each channel
+    # sample         = Vector{value_type}(channel_count) # A buffer for a single sample for each channel
     buffers        = Dict() # DRCNOTE, this was a dictionary in python impl, copying that logic for now
-    StreamInfo(
+    @show value_type
+    @show do_pull_sample
+    @show do_pull_chunk
+    StreamInlet{value_type, do_pull_sample, do_pull_chunk}(
         obj,
-        channel_format,
-        channel_count,
-        do_pull_sample,
-        do_pull_chunk,
-        value_type,
-        sample_type,
-        sample,
+        channel_format_,
+        channel_count_,
+        # do_pull_sample,
+        # do_pull_chunk,
+        # value_type,
+        # sample_type,
+        Vector{value_type}(channel_count_), # sample,
         buffers
     )
 end
@@ -1623,7 +1642,7 @@ function handle_error(errcode)
     # if typeof(errcode) is c_int:
     #     errcode = errcode.value
     if errcode == 0
-        pass  # no error
+        # pass  # no error
     elseif errcode == -1
         error("the operation failed due to a timeout.") # raise TimeoutError
     elseif errcode == -2
@@ -1652,26 +1671,33 @@ end
 # lost_error = LostError
 # vectorf = vectord = vectorl = vectori = vectors = vectorc = vectorstr = list
 
+# DRCFIX - fix this silliness w/ multiple dispatch...
+# function resolve_stream(args...)
+#     if length(args) == 0
+#         return resolve_streams()
+#     elseif typeof(args[1]) <: Union{Int, AbstractFloat}
+#         return resolve_streams(args[1])
+#     elseif typeof(args[1]) <: AbstractString
+#         if length(args) == 1
+#             return resolve_bypred(args[1])
+#         elseif typeof(args[2]) <: Union{Int, AbstractFloat}
+#             return resolve_bypred(args[1], args[2])
+#         else
+#             if length(args) == 2
+#                 return resolve_byprop(args[1], args[2])
+#             else
+#                 return resolve_byprop(args[1], args[2], args[3])
+#             end
+#         end
+#     end
+# end
 
-function resolve_stream(args...)
-    if length(args) == 0
-        return resolve_streams()
-    elseif typeof(args[1]) <: Union{Int, AbstractFloat}
-        return resolve_streams(args[1])
-    elseif typeof(args[1]) <: AbstractString
-        if length(args) == 1
-            return resolve_bypred(args[1])
-        elseif typeof(args[2]) <: Union{Int, AbstractFloat}
-            return resolve_bypred(args[1], args[2])
-        else
-            if len(args) == 2
-                return resolve_byprop(args[1], args[2])
-            else
-                return resolve_byprop(args[1], args[2], args[3])
-            end
-        end
-    end
-end
+resolve_stream() = resolve_streams()
+resolve_stream(arg1::Union{Int, AbstractFloat}) = resolve_streams(arg1)
+resolve_stream(arg1::AbstractString) = resolve_bypred(arg1)
+resolve_stream(arg1::AbstractString, arg2::Union{Int, AbstractFloat}) = resolve_bypred(arg1, arg2)
+resolve_stream(arg1::AbstractString, arg2) = resolve_byprop(arg1, arg2)
+resolve_byprop(arg1::AbstractString, arg2, arg3) = resolve_byprop(arg1, arg2, arg3)
 
 
 # ==================================
