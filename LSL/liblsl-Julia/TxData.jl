@@ -42,39 +42,17 @@ so = StreamOutlet(si,0,360)
 # /* send data forever (note: this loop is keeping the CPU busy, normally one would sleep or yield here) */
 print("Now sending data...\n");
 starttime = time();
-while time() - starttime < 15
-	mysample = rand(Cfloat, 8)
-	# lsl_push_sample_f(outlet,cursample);
 
-	println("Pushing a sample!")
-	push_sample(so, mysample)
-	sleep(0.01)
+t = time()
+f = 20.0;
+while t - starttime < 15
+    t = time()
+    mysample = sin.(2*pi*f*t*ones(Cfloat,8))
+
+    # lsl_push_sample_f(outlet,cursample);
+
+    println("Pushing a sample: $mysample")
+    push_sample(so, mysample)
+    sleep(0.01)
 end
 
-# """Example program to show how to read a multi-channel time series from LSL."""
-# from pylsl import StreamInlet, resolve_stream
-
-# first resolve an EEG stream on the lab network
-println("looking for an EEG stream...")
-streams = resolve_stream("type", "EEG")
-
-println("Found a stream!")
-
-# create a new inlet to read from the stream
-inlet = StreamInlet(streams[1])
-println("Made an inlet!")
-
-begin
-	starttime = time()
-	while time() - starttime < 15
-		# get a new sample (you can also omit the timestamp part if you're not
-		# interested in it)
-		println("Pulling a sample???")
-		sample, timestamp = pull_sample(inlet)
-		# println(timestamp, sample)
-	end
-end
-
-
-# /* we never get here, buy anyway */
-# lsl_destroy_outlet(outlet);

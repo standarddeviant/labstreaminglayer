@@ -1071,7 +1071,7 @@ function open_stream(self::StreamInlet, timeout=FOREVER)
     ccall((:lsl_open_stream, LSLBIN),
         Void,
         (Ptr{Void}, Cdouble, Ptr{Cint}),
-        self.obj, Cdouble(timeout), pointer(errcode)
+        self.obj, Cdouble(timeout), Ref{Cint}(errcode)
     )
     handle_error(errcode)
 end
@@ -1118,7 +1118,7 @@ function time_correction(self::StreamInlet, timeout=FOREVER)
     result = ccall((:lsl_time_correction, LSLBIN),
         Cdouble,
         (Ptr{Void}, Cdouble, Ptr{Cint}),
-        self.obj, Cdouble(timeout), pointer(errcode)
+        self.obj, Cdouble(timeout), Ref{Cint}(errcode)
     )
     handle_error(errcode)
     result
@@ -1153,22 +1153,26 @@ function pull_sample(self::StreamInlet{T, PS, PC}, timeout=FOREVER,
     # else:
     #     assign_to = nothing
             
-    errcode = Vector{Cint}(1); errcode[1]=0; # c_int()
+    errcode = Cint(0); # c_int()
     # timestamp = self.do_pull_sample(self.obj, byref(self.sample),
     #                                 self.channel_count, c_double(timeout),
     #                                 byref(errcode))
     # DRCNOTE, "self.sample" above is a C-compatiable buffer 
     # DRCNOTE, for holding self.channel_count values of type self.value_type
+    # println("calling $PS / $LSLBIN")
     timestamp = ccall((PS, LSLBIN),
         Cdouble,
         (Ptr{Void}, Ptr{T}, Cint, Cdouble, Ptr{Cint}),
         self.obj, pointer(self.sample_buf), Cint(self.channel_count), 
-            Cdouble(timeout), pointer(errcode)
+            Cdouble(timeout), Ref{Cint}(errcode)
     )
+    # println("called $PS / $LSLBIN")
     handle_error(errcode)
-    if timestamp
+    # println("handled errcode =  $errcode")
+    if timestamp > 0
         # sample = [v for v in self.sample]
-        sample = deepcopy(self.sample)
+        sample_ = deepcopy(self.sample)
+        println("Via pull_sample, got: $sample_")
         # DRCFIX - ensure this string manipulation is unnecessary with Julia...
         # if self.channel_format == cf_string:
         #     sample = [v.decode("utf-8") for v in sample]
@@ -1177,7 +1181,7 @@ function pull_sample(self::StreamInlet{T, PS, PC}, timeout=FOREVER,
         # if assign_to is not nothing:
         #     assign_to[:] = sample
         # end
-        return sample, timestamp
+        return sample_, timestamp
     else
         return nothing, nothing
     end
@@ -1233,7 +1237,7 @@ function pull_chunk(self::StreamInlet{T, PS, PC}, timeout=0.0,
 
 
     # it's a bit silly that pointer(Cint(0)) fails, so we have to do this silliness :-\
-    errcode = Vector{Cint}(1)
+    errcode = Cint(0)
     # c_int()
     # noinspection PyCallingNonCallable
     # num_elements = self.do_pull_chunk(self.obj, byref(data_buff),
@@ -1247,9 +1251,9 @@ function pull_chunk(self::StreamInlet{T, PS, PC}, timeout=0.0,
         (Ptr{Void}, Ptr{T}, Ptr{Cdouble}, 
             Cint, Cint, Cdouble, Ptr{Cint} ),
         self.obj, pointer(data_buff), pointer(ts_buff),
-            Cint(max_values), Cint(max_values), Cdouble(timeout), pointer(errcode)
+            Cint(max_values), Cint(max_values), Cdouble(timeout), Ref{Cint}(errcode)
     )
-    handle_error(errcode[1])
+    handle_error(errcode)
     # return results (note: could offer a more efficient format in the 
     # future, e.g., a numpy array)
     num_samples = num_elements/num_channels
