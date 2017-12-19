@@ -350,6 +350,26 @@ function StreamInfo(name="untitled", type_="", channel_count=1,
     StreamInfo(obj)
 end # function StreamInfo
 
+import Base.show
+function show(io::IO, si::StreamInfo)
+    println(io, "StreamInfo named $(name(si)), type=$(type_(si)), channels=$(channel_count(si)), desc=$(desc(si))")
+    # name(self::StreamInfo) in Main at C:\Users\dc71219\src\labstreaminglayer\LSL\liblsl-Julia\LSL.jl:385
+    # channel_count(self::StreamInfo) in Main at C:\Users\dc71219\src\labstreaminglayer\LSL\liblsl-Julia\LSL.jl:415
+    # channel_format(self::StreamInfo) in Main at C:\Users\dc71219\src\labstreaminglayer\LSL\liblsl-Julia\LSL.jl:444
+    # created_at(self::StreamInfo) in Main at C:\Users\dc71219\src\labstreaminglayer\LSL\liblsl-Julia\LSL.jl:479
+    # desc(self::StreamInfo) in Main at C:\Users\dc71219\src\labstreaminglayer\LSL\liblsl-Julia\LSL.jl:548
+    # hostname(self::StreamInfo) in Main at C:\Users\dc71219\src\labstreaminglayer\LSL\liblsl-Julia\LSL.jl:523
+    # name(self::StreamInfo) in Main at C:\Users\dc71219\src\labstreaminglayer\LSL\liblsl-Julia\LSL.jl:385
+    # nominal_srate(self::StreamInfo) in Main at C:\Users\dc71219\src\labstreaminglayer\LSL\liblsl-Julia\LSL.jl:433
+    # session_id(self::StreamInfo) in Main at C:\Users\dc71219\src\labstreaminglayer\LSL\liblsl-Julia\LSL.jl:512
+    # source_id(self::StreamInfo) in Main at C:\Users\dc71219\src\labstreaminglayer\LSL\liblsl-Julia\LSL.jl:457
+    # type_(self::StreamInfo) in Main at C:\Users\dc71219\src\labstreaminglayer\LSL\liblsl-Julia\LSL.jl:402
+    # uid(self::StreamInfo) in Main at C:\Users\dc71219\src\labstreaminglayer\LSL\liblsl-Julia\LSL.jl:492
+    # version(self::StreamInfo) in Main at C:\Users\dc71219\src\labstreaminglayer\LSL\liblsl-Julia\LSL.jl:467
+    # println(io,"StreamInfo for $(obj.testname)")
+    # println(io,"$(object.output)")
+end
+
 # function StreamInfo(;handle=nothing)
 #     obj = Ptr{Void}()
 #     if obj == C_NULL
@@ -1393,7 +1413,7 @@ function previous_sibling(self::XMLElement, name=nothing)
 end
 
 """Get the parent node."""
-function parent(self::XMLElement)
+function parent_(self::XMLElement)
     XMLElement(ccall((:lsl_parent, LSLBIN), Ptr{Void}, (Ptr{Void},), self.e))
 end
 
@@ -1704,7 +1724,7 @@ resolve_stream() = resolve_streams()
 resolve_stream(arg1::Union{Int, AbstractFloat}) = resolve_streams(arg1)
 resolve_stream(arg1::AbstractString) = resolve_bypred(arg1)
 resolve_stream(arg1::AbstractString, arg2::Union{Int, AbstractFloat}) = resolve_bypred(arg1, arg2)
-resolve_stream(arg1::AbstractString, arg2) = resolve_byprop(arg1, arg2)
+resolve_stream(arg1::AbstractString, arg2::AbstractString) = resolve_byprop(arg1, arg2)
 resolve_byprop(arg1::AbstractString, arg2, arg3) = resolve_byprop(arg1, arg2, arg3)
 
 

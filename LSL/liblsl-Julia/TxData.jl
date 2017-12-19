@@ -44,8 +44,8 @@ print("Now sending data...\n");
 starttime = time();
 
 t = time()
-f = 20.0;
-while t - starttime < 15
+f = 2.0;
+while t - starttime < 3600
     t = time()
     mysample = sin.(2*pi*f*t*ones(Cfloat,8))
 

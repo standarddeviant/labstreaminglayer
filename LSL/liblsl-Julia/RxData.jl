@@ -1,6 +1,6 @@
 # first resolve an EEG stream on the lab network
 println("looking for an EEG stream...")
-streams = resolve_stream("type", "EEG")
+streams = resolve_byprop("type", "EEG", 1, 10.0)
 
 println("Found a stream!")
 
